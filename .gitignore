@@ -1,0 +1,28 @@
+/target
+**/*.rs.bk
+Cargo.lock
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Environment & credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+[Dd]esktop.ini
+.DS_Store
