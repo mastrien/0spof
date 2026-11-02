@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod crawler;
 pub mod crypto;
 pub mod error;
 pub mod models;
@@ -6,6 +7,7 @@ pub mod outbox;
 pub mod storage;
 
 pub use auth::{MoodleClient, MoodleSession};
+pub use crawler::{AssignmentDetails, CourseCrawler, SyncSummary};
 pub use crypto::*;
 pub use error::{Result, SpofError};
 pub use models::*;
