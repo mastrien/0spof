@@ -1,0 +1,20 @@
+[package]
+name = "spof-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "0spof-mcp"
+path = "src/main.rs"
+
+[dependencies]
+spof-core = { path = "../spof-core" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

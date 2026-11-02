@@ -32,3 +32,30 @@ O projeto é estruturado como um monorepo Cargo em Rust:
 - **Quality Gate no CI:** Mínimo de 70% de cobertura de código obrigatória, com proibição de regressão.
 - **Privacidade & LGPD:** Os dados e credenciais pertencem ao usuário e permanecem estritamente em armazenamento local criptografado.
 - **Prova de Existência Criptográfica:** Uso de carimbo de tempo auditável (RFC 3161 / TSA) para atestar a conclusão de tarefas antes de prazos de entrega quando o servidor estiver fora do ar.
+
+---
+
+## 🤖 Servidor MCP (Model Context Protocol)
+
+O `0spof-mcp` permite que agentes de IA (como Claude Desktop, Gemini CLI ou Cursor) consultem seus dados do Moodle e gerenciem a fila de entregas:
+
+```json
+{
+  "mcpServers": {
+    "0spof": {
+      "command": "0spof-mcp",
+      "env": {
+        "SPOF_DB_PATH": "C:/path/to/0spof.db"
+      }
+    }
+  }
+}
+```
+
+### Ferramentas disponíveis via MCP:
+- `get_deadlines`: Lista prazos acadêmicos futuros e tarefas não entregues.
+- `get_courses`: Lista disciplinas matriculadas e cacheadas localmente.
+- `get_course_sections`: Consulta tópicos e materiais de aula da disciplina.
+- `queue_submission`: Enfileira arquivo para entrega com cálculo de hash SHA-256 e carimbo de tempo RFC 3161 opcional.
+- `get_submission_proof`: Gera dossiê/comprovante criptográfico auditável.
+- `get_outbox_status`: Monitora tarefas na fila de reenvio automático.
