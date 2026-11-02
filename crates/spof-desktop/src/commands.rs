@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use spof_core::auth::MoodleSession;
+use spof_core::auth::{MoodleClient, MoodleSession};
+use spof_core::crawler::CourseCrawler;
 use spof_core::outbox::OutboxEngine;
 use spof_core::storage::Database;
 use std::path::Path;
@@ -64,6 +65,13 @@ pub struct ProofDto {
 pub struct SessionInfoDto {
     pub is_authenticated: bool,
     pub base_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncSummaryDto {
+    pub courses_synced: usize,
+    pub sections_synced: usize,
+    pub activities_synced: usize,
 }
 
 // Logic handlers decoupled from Tauri macros for direct testing and IPC execution
@@ -180,6 +188,28 @@ pub fn handle_get_session_info(state: &AppState) -> SessionInfoDto {
     }
 }
 
+pub async fn handle_sync_moodle(state: &AppState) -> Result<SyncSummaryDto, String> {
+    let session = {
+        let lock = state.session.lock().unwrap();
+        lock.clone().ok_or_else(|| {
+            "Nenhuma sessão configurada. Acesse 'Conexão Moodle' para configurar sua sessão antes de sincronizar.".to_string()
+        })?
+    };
+
+    let client = MoodleClient::new(session.base_url.clone())
+        .map_err(|e| e.to_string())?
+        .with_session(session);
+
+    let crawler = CourseCrawler::new(state.db.clone(), client);
+    let summary = crawler.sync_all().await.map_err(|e| e.to_string())?;
+
+    Ok(SyncSummaryDto {
+        courses_synced: summary.courses_synced,
+        sections_synced: summary.sections_synced,
+        activities_synced: summary.activities_synced,
+    })
+}
+
 // Tauri IPC Command wrappers
 #[tauri::command]
 pub fn get_system_status(
@@ -230,6 +260,11 @@ pub fn save_session(
 #[tauri::command]
 pub fn get_session_info(state: tauri::State<'_, Arc<AppState>>) -> SessionInfoDto {
     handle_get_session_info(&state)
+}
+
+#[tauri::command]
+pub async fn sync_moodle(state: tauri::State<'_, Arc<AppState>>) -> Result<SyncSummaryDto, String> {
+    handle_sync_moodle(&state).await
 }
 
 #[cfg(test)]
@@ -304,6 +339,15 @@ mod tests {
         let proof = handle_get_submission_proof(&db, enqueue_res.outbox_id).unwrap();
         assert_eq!(proof.assign_id, 9901);
         assert!(proof.formatted_report.contains("COMPROVANTE"));
+    }
+
+    #[tokio::test]
+    async fn test_desktop_sync_without_session_error() {
+        let db = Database::open_in_memory().unwrap();
+        let state = AppState::new(db);
+        let res = handle_sync_moodle(&state).await;
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("Nenhuma sessão configurada"));
     }
 
     #[test]

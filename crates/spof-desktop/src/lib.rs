@@ -21,6 +21,7 @@ pub fn run() {
             commands::get_submission_proof,
             commands::save_session,
             commands::get_session_info,
+            commands::sync_moodle,
         ])
         .run(tauri::generate_context!())
         .expect("error while running 0spof desktop application");
