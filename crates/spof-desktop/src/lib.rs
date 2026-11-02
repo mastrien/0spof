@@ -19,6 +19,8 @@ pub fn run() {
             commands::get_outbox_items,
             commands::enqueue_submission,
             commands::get_submission_proof,
+            commands::save_session,
+            commands::get_session_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running 0spof desktop application");

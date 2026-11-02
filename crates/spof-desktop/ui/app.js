@@ -5,6 +5,8 @@ const invoke = (window.__TAURI__ && window.__TAURI__.core)
       if (cmd === "get_system_status") return { courses_count: 0, deadlines_count: 0, outbox_count: 0 };
       if (cmd === "get_courses") return [];
       if (cmd === "get_outbox_items") return [];
+      if (cmd === "get_session_info") return { is_authenticated: false, base_url: null };
+      if (cmd === "save_session") return { is_authenticated: true, base_url: args.baseUrl };
       return { message: "Mock response" };
     };
 
@@ -28,6 +30,7 @@ navItems.forEach((btn) => {
       courses: "Disciplinas e Prazos Salvos",
       outbox: "Fila de Submissões Pendentes",
       "queue-modal": "Nova Submissão Offline",
+      settings: "Conexão Institucional Moodle / SUAP",
     };
     tabTitle.innerText = titles[target] || "0spof";
   });
@@ -41,6 +44,18 @@ async function refreshData() {
     document.getElementById("metric-deadlines").innerText = status.deadlines_count;
     document.getElementById("metric-outbox").innerText = status.outbox_count;
     document.getElementById("outbox-count").innerText = status.outbox_count;
+
+    const sessionInfo = await invoke("get_session_info");
+    const dot = document.getElementById("session-dot");
+    const txt = document.getElementById("session-text");
+
+    if (sessionInfo.is_authenticated) {
+      dot.className = "dot online";
+      txt.innerText = "Conectado ao Moodle";
+    } else {
+      dot.className = "dot offline";
+      txt.innerText = "Sessão Desconectada";
+    }
 
     await loadCourses();
     await loadOutbox();
@@ -137,6 +152,31 @@ formEnqueue.addEventListener("submit", async (e) => {
     resultBox.className = "result-message error";
     resultBox.innerText = `Erro ao enfileirar: ${err}`;
     resultBox.style.display = "block";
+  }
+});
+
+// Configuração de Sessão Moodle
+const formSession = document.getElementById("form-session");
+const sessionResult = document.getElementById("session-result");
+
+formSession.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  sessionResult.className = "result-message";
+  sessionResult.style.display = "none";
+
+  const baseUrl = document.getElementById("moodle-url").value;
+  const sessionCookie = document.getElementById("moodle-cookie").value;
+
+  try {
+    const res = await invoke("save_session", { baseUrl, sessionCookie });
+    sessionResult.className = "result-message success";
+    sessionResult.innerText = `Sessão para ${res.base_url} salva com sucesso!`;
+    sessionResult.style.display = "block";
+    await refreshData();
+  } catch (err) {
+    sessionResult.className = "result-message error";
+    sessionResult.innerText = `Erro ao salvar sessão: ${err}`;
+    sessionResult.style.display = "block";
   }
 });
 

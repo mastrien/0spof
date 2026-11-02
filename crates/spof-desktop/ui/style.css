@@ -366,3 +366,9 @@ body {
   overflow-y: auto;
   margin-bottom: 15px;
 }
+
+
+.dot.offline {
+  background-color: var(--danger);
+  box-shadow: 0 0 8px var(--danger);
+}
