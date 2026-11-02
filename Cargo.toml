@@ -4,6 +4,7 @@ members = [
     "crates/spof-core",
     "crates/spof-cli",
     "crates/spof-desktop",
+    "crates/spof-mcp",
 ]
 
 [workspace.package]
