@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>0spof - Resiliência Acadêmica Moodle</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo-shield">0S</div>
+        <div>
+          <h2>0spof</h2>
+          <span class="sub">Zero Single Point of Failure</span>
+        </div>
+      </div>
+
+      <nav class="nav-menu">
+        <button class="nav-item active" data-tab="dashboard">📊 Visão Geral</button>
+        <button class="nav-item" data-tab="courses">📚 Cursos & Prazos</button>
+        <button class="nav-item" data-tab="outbox">📤 Fila Outbox <span class="badge" id="outbox-count">0</span></button>
+        <button class="nav-item" data-tab="queue-modal">➕ Nova Submissão</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="status-indicator">
+          <span class="dot online"></span>
+          <span>Core Operacional</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="top-bar">
+        <h1 id="tab-title">Painel de Resiliência</h1>
+        <div class="actions">
+          <button id="btn-refresh" class="btn btn-secondary">🔄 Atualizar</button>
+        </div>
+      </header>
+
+      <section id="tab-dashboard" class="tab-pane active">
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <h3>Cursos Salvos</h3>
+            <p class="metric-value" id="metric-courses">0</p>
+            <span class="metric-tip">Disponíveis offline</span>
+          </div>
+          <div class="metric-card">
+            <h3>Prazos Ativos</h3>
+            <p class="metric-value" id="metric-deadlines">0</p>
+            <span class="metric-tip">Acompanhamento local</span>
+          </div>
+          <div class="metric-card">
+            <h3>Fila de Envio (Outbox)</h3>
+            <p class="metric-value" id="metric-outbox">0</p>
+            <span class="metric-tip">Aguardando entrega</span>
+          </div>
+        </div>
+
+        <div class="content-box">
+          <h2>Sobre o Modo Offline</h2>
+          <p>Se o Moodle da sua instituição cair ou apresentar <em>Bad Gateway</em>, seus arquivos, ementas e prazos salvos continuam acessíveis. Submeta tarefas na <strong>Fila Outbox</strong> para gerar seu <strong>comprovante criptográfico com carimbo RFC 3161</strong> e garantir a pontualidade do seu envio.</p>
+        </div>
+      </section>
+
+      <section id="tab-courses" class="tab-pane">
+        <div class="content-box">
+          <h2>Disciplinas Cacheadas</h2>
+          <div id="courses-list" class="item-list">Carregando disciplinas...</div>
+        </div>
+      </section>
+
+      <section id="tab-outbox" class="tab-pane">
+        <div class="content-box">
+          <h2>Fila de Submissões Pendentes</h2>
+          <div id="outbox-list" class="item-list">Nenhuma tarefa na fila de envio.</div>
+        </div>
+      </section>
+
+      <section id="tab-queue-modal" class="tab-pane">
+        <div class="content-box">
+          <h2>Enfileirar Submissão Offline</h2>
+          <form id="form-enqueue" class="submission-form">
+            <div class="form-group">
+              <label for="assign-id">ID da Tarefa no Moodle</label>
+              <input type="number" id="assign-id" required placeholder="Ex: 4512">
+            </div>
+
+            <div class="form-group">
+              <label for="file-path">Caminho do Arquivo no Computador</label>
+              <input type="text" id="file-path" required placeholder="C:\Users\...\trabalho.pdf">
+            </div>
+
+            <div class="form-group checkbox-group">
+              <input type="checkbox" id="check-tsa" checked>
+              <label for="check-tsa">Obter Carimbo de Tempo Público Auditável (RFC 3161 TSA)</label>
+            </div>
+
+            <button type="submit" class="btn btn-primary">🔒 Enfileirar com Selo Criptográfico</button>
+          </form>
+
+          <div id="enqueue-result" class="result-message"></div>
+        </div>
+      </section>
+
+      <div id="proof-modal" class="modal hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2>Dossiê Forense de Entrega</h2>
+            <button id="btn-close-modal" class="btn-close">&times;</button>
+          </div>
+          <pre id="proof-text" class="proof-pre"></pre>
+          <div class="modal-footer">
+            <button id="btn-copy-proof" class="btn btn-secondary">📋 Copiar Comprovante</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

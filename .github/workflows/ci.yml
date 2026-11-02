@@ -22,6 +22,11 @@ jobs:
         with:
           components: clippy, rustfmt, llvm-tools-preview
 
+      - name: Install Linux GUI Dependencies for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libjavascriptcoregtk-4.1-dev libsoup-3.0-dev
+
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
