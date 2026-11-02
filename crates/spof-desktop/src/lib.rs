@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod dto;
 
 pub use commands::AppState;
 use spof_core::storage::Database;

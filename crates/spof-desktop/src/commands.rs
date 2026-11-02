@@ -1,4 +1,7 @@
-use serde::{Deserialize, Serialize};
+use crate::dto::{
+    CourseDto, EnqueueResultDto, OutboxItemDto, ProofDto, SessionInfoDto, SyncSummaryDto,
+    SystemStatusDto,
+};
 use spof_core::auth::{MoodleClient, MoodleSession};
 use spof_core::crawler::CourseCrawler;
 use spof_core::outbox::OutboxEngine;
@@ -21,87 +24,40 @@ impl AppState {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SystemStatusDto {
-    pub courses_count: usize,
-    pub deadlines_count: usize,
-    pub outbox_count: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CourseDto {
-    pub id: i64,
-    pub fullname: String,
-    pub shortname: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct OutboxItemDto {
-    pub id: i64,
-    pub assign_id: i64,
-    pub filename: String,
-    pub file_hash: String,
-    pub status: String,
-    pub retry_count: u32,
-    pub has_rfc3161_token: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct EnqueueResultDto {
-    pub outbox_id: i64,
-    pub file_hash: String,
-    pub has_tsa_token: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ProofDto {
-    pub assign_id: i64,
-    pub filename: String,
-    pub file_hash: String,
-    pub formatted_report: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SessionInfoDto {
-    pub is_authenticated: bool,
-    pub base_url: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SyncSummaryDto {
-    pub courses_synced: usize,
-    pub sections_synced: usize,
-    pub activities_synced: usize,
-}
-
 // Logic handlers decoupled from Tauri macros for direct testing and IPC execution
 
-pub fn handle_get_system_status(db: &Database) -> Result<SystemStatusDto, String> {
-    let courses = db.get_courses().map_err(|e| e.to_string())?;
-    let deadlines = db.get_upcoming_deadlines().map_err(|e| e.to_string())?;
-    let pending = db.get_pending_outbox_items().map_err(|e| e.to_string())?;
+pub fn handle_get_system_status(database: &Database) -> Result<SystemStatusDto, String> {
+    let courses = database.get_courses().map_err(|e| e.to_string())?;
+    let deadlines = database
+        .get_upcoming_deadlines()
+        .map_err(|e| e.to_string())?;
+    let pending_items = database
+        .get_pending_outbox_items()
+        .map_err(|e| e.to_string())?;
 
     Ok(SystemStatusDto {
         courses_count: courses.len(),
         deadlines_count: deadlines.len(),
-        outbox_count: pending.len(),
+        outbox_count: pending_items.len(),
     })
 }
 
-pub fn handle_get_courses(db: &Database) -> Result<Vec<CourseDto>, String> {
-    let courses = db.get_courses().map_err(|e| e.to_string())?;
+pub fn handle_get_courses(database: &Database) -> Result<Vec<CourseDto>, String> {
+    let courses = database.get_courses().map_err(|e| e.to_string())?;
     Ok(courses
         .into_iter()
-        .map(|c| CourseDto {
-            id: c.id,
-            fullname: c.fullname,
-            shortname: c.shortname,
+        .map(|course| CourseDto {
+            id: course.id,
+            fullname: course.fullname,
+            shortname: course.shortname,
         })
         .collect())
 }
 
-pub fn handle_get_outbox_items(db: &Database) -> Result<Vec<OutboxItemDto>, String> {
-    let items = db.get_pending_outbox_items().map_err(|e| e.to_string())?;
+pub fn handle_get_outbox_items(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
+    let items = database
+        .get_pending_outbox_items()
+        .map_err(|e| e.to_string())?;
     Ok(items
         .into_iter()
         .map(|item| OutboxItemDto {
@@ -117,13 +73,13 @@ pub fn handle_get_outbox_items(db: &Database) -> Result<Vec<OutboxItemDto>, Stri
 }
 
 pub async fn handle_enqueue_submission(
-    db: &Database,
+    database: &Database,
     assign_id: i64,
     file_path: &str,
     fetch_tsa: bool,
 ) -> Result<EnqueueResultDto, String> {
     let path = Path::new(file_path);
-    let engine = OutboxEngine::new(db.clone());
+    let engine = OutboxEngine::new(database.clone());
     let item = engine
         .enqueue_file(assign_id, path, fetch_tsa)
         .await
@@ -136,13 +92,17 @@ pub async fn handle_enqueue_submission(
     })
 }
 
-pub fn handle_get_submission_proof(db: &Database, outbox_id: i64) -> Result<ProofDto, String> {
-    let engine = OutboxEngine::new(db.clone());
+pub fn handle_get_submission_proof(
+    database: &Database,
+    outbox_id: i64,
+) -> Result<ProofDto, String> {
+    let engine = OutboxEngine::new(database.clone());
     let proof = engine
         .get_submission_proof(outbox_id)
         .map_err(|e| e.to_string())?;
 
     let formatted_report = proof.formatted_report();
+
     Ok(ProofDto {
         assign_id: proof.assign_id,
         filename: proof.filename,
@@ -156,61 +116,66 @@ pub fn handle_save_session(
     base_url: String,
     session_cookie: String,
 ) -> Result<SessionInfoDto, String> {
-    let clean_url = base_url.trim().trim_end_matches('/').to_string();
-    let clean_cookie = session_cookie.trim().to_string();
+    let trimmed_url = base_url.trim();
+    let trimmed_cookie = session_cookie.trim();
 
-    if clean_url.is_empty() || clean_cookie.is_empty() {
-        return Err("A URL e o cookie de sessão não podem ser vazios".to_string());
+    if trimmed_url.is_empty() || trimmed_cookie.is_empty() {
+        return Err("URL base e Cookie de Sessão não podem ser vazios".to_string());
     }
 
-    let session = MoodleSession::new(clean_url.clone(), clean_cookie);
-    let mut lock = state.session.lock().unwrap();
-    *lock = Some(session);
+    let moodle_session = MoodleSession::new(trimmed_url.to_string(), trimmed_cookie.to_string());
+    let mut session_guard = state.session.lock().unwrap();
+    *session_guard = Some(moodle_session);
 
     Ok(SessionInfoDto {
         is_authenticated: true,
-        base_url: Some(clean_url),
+        base_url: Some(trimmed_url.to_string()),
     })
 }
 
 pub fn handle_get_session_info(state: &AppState) -> SessionInfoDto {
-    let lock = state.session.lock().unwrap();
-    if let Some(sess) = &*lock {
-        SessionInfoDto {
-            is_authenticated: !sess.is_expired(),
-            base_url: Some(sess.base_url.clone()),
-        }
-    } else {
-        SessionInfoDto {
+    let session_guard = state.session.lock().unwrap();
+    match session_guard.as_ref() {
+        Some(session) => SessionInfoDto {
+            is_authenticated: true,
+            base_url: Some(session.base_url.clone()),
+        },
+        None => SessionInfoDto {
             is_authenticated: false,
             base_url: None,
-        }
+        },
     }
 }
 
 pub async fn handle_sync_moodle(state: &AppState) -> Result<SyncSummaryDto, String> {
-    let session = {
-        let lock = state.session.lock().unwrap();
-        lock.clone().ok_or_else(|| {
-            "Nenhuma sessão configurada. Acesse 'Conexão Moodle' para configurar sua sessão antes de sincronizar.".to_string()
-        })?
+    let session_opt = {
+        let guard = state.session.lock().unwrap();
+        guard.clone()
     };
 
+    let session = session_opt.ok_or_else(|| {
+        "Nenhuma sessão configurada. Configure a conexão nas Configurações.".to_string()
+    })?;
+
     let client = MoodleClient::new(session.base_url.clone())
-        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("Erro ao criar cliente Moodle: {}", e))?
         .with_session(session);
 
     let crawler = CourseCrawler::new(state.db.clone(), client);
-    let summary = crawler.sync_all().await.map_err(|e| e.to_string())?;
+    let sync_result = crawler
+        .sync_all()
+        .await
+        .map_err(|e| format!("Falha na sincronização: {}", e))?;
 
     Ok(SyncSummaryDto {
-        courses_synced: summary.courses_synced,
-        sections_synced: summary.sections_synced,
-        activities_synced: summary.activities_synced,
+        courses_synced: sync_result.courses_synced,
+        sections_synced: sync_result.sections_synced,
+        activities_synced: sync_result.activities_synced,
     })
 }
 
-// Tauri IPC Command wrappers
+// Tauri IPC Command Bindings
+
 #[tauri::command]
 pub fn get_system_status(
     state: tauri::State<'_, Arc<AppState>>,
@@ -232,27 +197,27 @@ pub fn get_outbox_items(
 
 #[tauri::command]
 pub async fn enqueue_submission(
+    state: tauri::State<'_, Arc<AppState>>,
     assign_id: i64,
     file_path: String,
     fetch_tsa: bool,
-    state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<EnqueueResultDto, String> {
     handle_enqueue_submission(&state.db, assign_id, &file_path, fetch_tsa).await
 }
 
 #[tauri::command]
 pub fn get_submission_proof(
-    id: i64,
     state: tauri::State<'_, Arc<AppState>>,
+    outbox_id: i64,
 ) -> Result<ProofDto, String> {
-    handle_get_submission_proof(&state.db, id)
+    handle_get_submission_proof(&state.db, outbox_id)
 }
 
 #[tauri::command]
 pub fn save_session(
+    state: tauri::State<'_, Arc<AppState>>,
     base_url: String,
     session_cookie: String,
-    state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<SessionInfoDto, String> {
     handle_save_session(&state, base_url, session_cookie)
 }
@@ -267,101 +232,6 @@ pub async fn sync_moodle(state: tauri::State<'_, Arc<AppState>>) -> Result<SyncS
     handle_sync_moodle(&state).await
 }
 
+#[path = "commands_tests.rs"]
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use spof_core::models::Course;
-    use std::io::Write;
-    use tempfile::NamedTempFile;
-
-    #[tokio::test]
-    async fn test_desktop_handlers_flow() {
-        let db = Database::open_in_memory().unwrap();
-        let state = AppState::new(db.clone());
-
-        // 1. Initial status and session info
-        let status = handle_get_system_status(&db).unwrap();
-        assert_eq!(status.courses_count, 0);
-
-        let sess_info = handle_get_session_info(&state);
-        assert!(!sess_info.is_authenticated);
-        assert!(sess_info.base_url.is_none());
-
-        // 2. Save session
-        let saved_sess = handle_save_session(
-            &state,
-            "https://moodle.ifsp.edu.br".to_string(),
-            "cookie12345".to_string(),
-        )
-        .unwrap();
-        assert!(saved_sess.is_authenticated);
-        assert_eq!(
-            saved_sess.base_url.as_deref(),
-            Some("https://moodle.ifsp.edu.br")
-        );
-
-        let sess_after = handle_get_session_info(&state);
-        assert!(sess_after.is_authenticated);
-
-        // 3. Add course and verify
-        let c = Course {
-            id: 99,
-            fullname: "Compiladores".to_string(),
-            shortname: "COMP".to_string(),
-            summary: None,
-            last_synced_at: None,
-        };
-        db.upsert_course(&c).unwrap();
-
-        let courses = handle_get_courses(&db).unwrap();
-        assert_eq!(courses.len(), 1);
-        assert_eq!(courses[0].fullname, "Compiladores");
-
-        // 4. Enqueue submission
-        let mut temp = NamedTempFile::new().unwrap();
-        temp.write_all(b"codigo do parser e lexer").unwrap();
-        temp.flush().unwrap();
-
-        let enqueue_res =
-            handle_enqueue_submission(&db, 9901, temp.path().to_str().unwrap(), false)
-                .await
-                .unwrap();
-
-        assert!(enqueue_res.outbox_id > 0);
-        assert!(!enqueue_res.file_hash.is_empty());
-
-        // 5. Check outbox
-        let outbox = handle_get_outbox_items(&db).unwrap();
-        assert_eq!(outbox.len(), 1);
-        assert_eq!(outbox[0].assign_id, 9901);
-
-        // 6. Get proof
-        let proof = handle_get_submission_proof(&db, enqueue_res.outbox_id).unwrap();
-        assert_eq!(proof.assign_id, 9901);
-        assert!(proof.formatted_report.contains("COMPROVANTE"));
-    }
-
-    #[tokio::test]
-    async fn test_desktop_sync_without_session_error() {
-        let db = Database::open_in_memory().unwrap();
-        let state = AppState::new(db);
-        let res = handle_sync_moodle(&state).await;
-        assert!(res.is_err());
-        assert!(res.unwrap_err().contains("Nenhuma sessão configurada"));
-    }
-
-    #[test]
-    fn test_desktop_save_session_validation_error() {
-        let db = Database::open_in_memory().unwrap();
-        let state = AppState::new(db);
-        let res = handle_save_session(&state, "   ".to_string(), "sess".to_string());
-        assert!(res.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_desktop_enqueue_missing_file_error() {
-        let db = Database::open_in_memory().unwrap();
-        let res = handle_enqueue_submission(&db, 1, "arquivo_que_nao_existe.xyz", false).await;
-        assert!(res.is_err());
-    }
-}
+mod tests;
