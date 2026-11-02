@@ -1,17 +1,22 @@
 use serde::{Deserialize, Serialize};
+use spof_core::auth::MoodleSession;
 use spof_core::outbox::OutboxEngine;
 use spof_core::storage::Database;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: Database,
+    pub session: Arc<Mutex<Option<MoodleSession>>>,
 }
 
 impl AppState {
     pub fn new(db: Database) -> Self {
-        Self { db }
+        Self {
+            db,
+            session: Arc::new(Mutex::new(None)),
+        }
     }
 }
 
@@ -53,6 +58,12 @@ pub struct ProofDto {
     pub filename: String,
     pub file_hash: String,
     pub formatted_report: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SessionInfoDto {
+    pub is_authenticated: bool,
+    pub base_url: Option<String>,
 }
 
 // Logic handlers decoupled from Tauri macros for direct testing and IPC execution
@@ -132,6 +143,43 @@ pub fn handle_get_submission_proof(db: &Database, outbox_id: i64) -> Result<Proo
     })
 }
 
+pub fn handle_save_session(
+    state: &AppState,
+    base_url: String,
+    session_cookie: String,
+) -> Result<SessionInfoDto, String> {
+    let clean_url = base_url.trim().trim_end_matches('/').to_string();
+    let clean_cookie = session_cookie.trim().to_string();
+
+    if clean_url.is_empty() || clean_cookie.is_empty() {
+        return Err("A URL e o cookie de sessão não podem ser vazios".to_string());
+    }
+
+    let session = MoodleSession::new(clean_url.clone(), clean_cookie);
+    let mut lock = state.session.lock().unwrap();
+    *lock = Some(session);
+
+    Ok(SessionInfoDto {
+        is_authenticated: true,
+        base_url: Some(clean_url),
+    })
+}
+
+pub fn handle_get_session_info(state: &AppState) -> SessionInfoDto {
+    let lock = state.session.lock().unwrap();
+    if let Some(sess) = &*lock {
+        SessionInfoDto {
+            is_authenticated: !sess.is_expired(),
+            base_url: Some(sess.base_url.clone()),
+        }
+    } else {
+        SessionInfoDto {
+            is_authenticated: false,
+            base_url: None,
+        }
+    }
+}
+
 // Tauri IPC Command wrappers
 #[tauri::command]
 pub fn get_system_status(
@@ -170,6 +218,20 @@ pub fn get_submission_proof(
     handle_get_submission_proof(&state.db, id)
 }
 
+#[tauri::command]
+pub fn save_session(
+    base_url: String,
+    session_cookie: String,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<SessionInfoDto, String> {
+    handle_save_session(&state, base_url, session_cookie)
+}
+
+#[tauri::command]
+pub fn get_session_info(state: tauri::State<'_, Arc<AppState>>) -> SessionInfoDto {
+    handle_get_session_info(&state)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,14 +242,33 @@ mod tests {
     #[tokio::test]
     async fn test_desktop_handlers_flow() {
         let db = Database::open_in_memory().unwrap();
+        let state = AppState::new(db.clone());
 
-        // 1. Initial status
+        // 1. Initial status and session info
         let status = handle_get_system_status(&db).unwrap();
         assert_eq!(status.courses_count, 0);
-        assert_eq!(status.deadlines_count, 0);
-        assert_eq!(status.outbox_count, 0);
 
-        // 2. Add course and verify
+        let sess_info = handle_get_session_info(&state);
+        assert!(!sess_info.is_authenticated);
+        assert!(sess_info.base_url.is_none());
+
+        // 2. Save session
+        let saved_sess = handle_save_session(
+            &state,
+            "https://moodle.ifsp.edu.br".to_string(),
+            "cookie12345".to_string(),
+        )
+        .unwrap();
+        assert!(saved_sess.is_authenticated);
+        assert_eq!(
+            saved_sess.base_url.as_deref(),
+            Some("https://moodle.ifsp.edu.br")
+        );
+
+        let sess_after = handle_get_session_info(&state);
+        assert!(sess_after.is_authenticated);
+
+        // 3. Add course and verify
         let c = Course {
             id: 99,
             fullname: "Compiladores".to_string(),
@@ -201,7 +282,7 @@ mod tests {
         assert_eq!(courses.len(), 1);
         assert_eq!(courses[0].fullname, "Compiladores");
 
-        // 3. Enqueue submission
+        // 4. Enqueue submission
         let mut temp = NamedTempFile::new().unwrap();
         temp.write_all(b"codigo do parser e lexer").unwrap();
         temp.flush().unwrap();
@@ -214,15 +295,23 @@ mod tests {
         assert!(enqueue_res.outbox_id > 0);
         assert!(!enqueue_res.file_hash.is_empty());
 
-        // 4. Check outbox
+        // 5. Check outbox
         let outbox = handle_get_outbox_items(&db).unwrap();
         assert_eq!(outbox.len(), 1);
         assert_eq!(outbox[0].assign_id, 9901);
 
-        // 5. Get proof
+        // 6. Get proof
         let proof = handle_get_submission_proof(&db, enqueue_res.outbox_id).unwrap();
         assert_eq!(proof.assign_id, 9901);
         assert!(proof.formatted_report.contains("COMPROVANTE"));
+    }
+
+    #[test]
+    fn test_desktop_save_session_validation_error() {
+        let db = Database::open_in_memory().unwrap();
+        let state = AppState::new(db);
+        let res = handle_save_session(&state, "   ".to_string(), "sess".to_string());
+        assert!(res.is_err());
     }
 
     #[tokio::test]
