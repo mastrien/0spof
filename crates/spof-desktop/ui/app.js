@@ -7,6 +7,7 @@ const invoke = (window.__TAURI__ && window.__TAURI__.core)
       if (cmd === "get_outbox_items") return [];
       if (cmd === "get_session_info") return { is_authenticated: false, base_url: null };
       if (cmd === "save_session") return { is_authenticated: true, base_url: args.baseUrl };
+      if (cmd === "sync_moodle") return { courses_synced: 1, sections_synced: 2, activities_synced: 3 };
       return { message: "Mock response" };
     };
 
@@ -177,6 +178,25 @@ formSession.addEventListener("submit", async (e) => {
     sessionResult.className = "result-message error";
     sessionResult.innerText = `Erro ao salvar sessão: ${err}`;
     sessionResult.style.display = "block";
+  }
+});
+
+// Sincronização Online do Moodle
+const btnSync = document.getElementById("btn-sync");
+btnSync.addEventListener("click", async () => {
+  btnSync.disabled = true;
+  const originalText = btnSync.innerText;
+  btnSync.innerText = "⏳ Sincronizando...";
+
+  try {
+    const summary = await invoke("sync_moodle");
+    alert(`Sincronização concluída!\nCursos atualizados: ${summary.courses_synced}\nSeções indexadas: ${summary.sections_synced}\nAtividades catalogadas: ${summary.activities_synced}`);
+    await refreshData();
+  } catch (err) {
+    alert("Erro na sincronização: " + err);
+  } finally {
+    btnSync.disabled = false;
+    btnSync.innerText = originalText;
   }
 });
 

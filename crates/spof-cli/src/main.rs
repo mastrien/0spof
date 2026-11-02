@@ -1,4 +1,6 @@
 use clap::{Parser, Subcommand};
+use spof_core::auth::{MoodleClient, MoodleSession};
+use spof_core::crawler::CourseCrawler;
 use spof_core::outbox::OutboxEngine;
 use spof_core::storage::Database;
 use std::path::{Path, PathBuf};
@@ -28,6 +30,17 @@ pub enum Commands {
 
     /// Lista os itens pendentes na fila outbox
     Outbox,
+
+    /// Sincroniza cursos e prazos do Moodle online para o banco local
+    Sync {
+        /// URL base da instância Moodle (ex: https://moodle.if.edu.br)
+        #[arg(short, long)]
+        url: Option<String>,
+
+        /// Valor do cookie de sessão MoodleSession
+        #[arg(short, long)]
+        cookie: Option<String>,
+    },
 
     /// Enfileira uma entrega de tarefa com hash SHA-256 e selagem RFC 3161
     Queue {
@@ -105,6 +118,32 @@ pub async fn run_command(db: &Database, cmd: &Commands) -> Result<String, String
                 ));
             }
             Ok(output)
+        }
+
+        Commands::Sync { url, cookie } => {
+            let (target_url, target_cookie) = match (url, cookie) {
+                (Some(u), Some(c)) => (u.clone(), c.clone()),
+                _ => {
+                    return Err(
+                        "Para sincronização online via CLI, forneça --url e --cookie (MoodleSession)".to_string(),
+                    );
+                }
+            };
+
+            let session = MoodleSession::new(target_url.clone(), target_cookie);
+            let client = MoodleClient::new(target_url)
+                .map_err(|e| e.to_string())?
+                .with_session(session);
+
+            let crawler = CourseCrawler::new(db.clone(), client);
+            let summary = crawler.sync_all().await.map_err(|e| e.to_string())?;
+
+            Ok(format!(
+                "Sincronização concluída com sucesso!\nCursos atualizados: {}\nSeções indexadas: {}\nAtividades catalogadas: {}",
+                summary.courses_synced,
+                summary.sections_synced,
+                summary.activities_synced
+            ))
         }
 
         Commands::Queue { assign, file, tsa } => {
@@ -198,6 +237,18 @@ mod tests {
 
         let courses_res = run_command(&db, &Commands::Courses).await;
         assert!(courses_res.unwrap().contains("Arquitetura de Computadores"));
+    }
+
+    #[tokio::test]
+    async fn test_run_command_sync_missing_params() {
+        let db = Database::open_in_memory().unwrap();
+        let cmd = Commands::Sync {
+            url: None,
+            cookie: None,
+        };
+        let res = run_command(&db, &cmd).await;
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("forneça --url e --cookie"));
     }
 
     #[tokio::test]
