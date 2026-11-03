@@ -3,144 +3,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>0spof - Resiliência Acadêmica Moodle</title>
+  <title>0spof — Resiliência acadêmica</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="app-layout">
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="logo-shield">0S</div>
-        <div>
-          <h2>0spof</h2>
-          <span class="sub">Zero Single Point of Failure</span>
-        </div>
-      </div>
-
+    <aside class="sidebar" aria-label="Navegação principal">
+      <div class="brand"><div class="logo-shield" aria-hidden="true">0<span>S</span></div><div><h2>0spof</h2><span class="sub">resiliência acadêmica</span></div></div>
       <nav class="nav-menu">
-        <button class="nav-item active" data-tab="dashboard">📊 Visão Geral</button>
-        <button class="nav-item" data-tab="courses">📚 Cursos & Prazos</button>
-        <button class="nav-item" data-tab="outbox">📤 Fila Outbox <span class="badge" id="outbox-count">0</span></button>
-        <button class="nav-item" data-tab="queue-modal">➕ Nova Submissão</button>
-        <button class="nav-item" data-tab="settings">⚙️ Conexão Moodle</button>
+        <p class="nav-label">Workspace</p>
+        <button class="nav-item active" data-tab="dashboard"><span class="nav-icon">⌂</span> Visão geral</button>
+        <button class="nav-item" data-tab="courses"><span class="nav-icon">▤</span> Cursos e prazos</button>
+        <button class="nav-item" data-tab="outbox"><span class="nav-icon">↑</span> Fila de envio <span class="badge" id="outbox-count">0</span></button>
+        <p class="nav-label nav-label-spaced">Ações</p>
+        <button class="nav-item" data-tab="queue-modal"><span class="nav-icon">+</span> Nova submissão</button>
+        <button class="nav-item" data-tab="settings"><span class="nav-icon">⚙</span> Conexão Moodle</button>
       </nav>
-
-      <div class="sidebar-footer">
-        <div class="status-indicator">
-          <span class="dot" id="session-dot"></span>
-          <span id="session-text">Verificando...</span>
-        </div>
-      </div>
+      <div class="sidebar-footer"><div class="status-indicator"><span class="dot" id="session-dot"></span><span id="session-text">Verificando conexão…</span></div><p>Seus dados ficam disponíveis localmente.</p></div>
     </aside>
-
     <main class="main-content">
-      <header class="top-bar">
-        <h1 id="tab-title">Painel de Resiliência</h1>
-        <div class="actions">
-          <button id="btn-sync" class="btn btn-primary">⚡ Sincronizar Moodle</button>
-          <button id="btn-refresh" class="btn btn-secondary">🔄 Atualizar</button>
-        </div>
-      </header>
-
+      <header class="top-bar"><div class="page-heading"><p class="eyebrow">0spof / workspace</p><h1 id="tab-title">Painel de Resiliência</h1></div><div class="actions"><button id="btn-refresh" class="btn btn-ghost" title="Atualizar dados"><span aria-hidden="true">↻</span><span class="button-text">Atualizar</span></button><button id="btn-sync" class="btn btn-primary"><span aria-hidden="true">↯</span> Sincronizar Moodle</button></div></header>
       <section id="tab-dashboard" class="tab-pane active">
-        <div class="metrics-grid">
-          <div class="metric-card">
-            <h3>Cursos Salvos</h3>
-            <p class="metric-value" id="metric-courses">0</p>
-            <span class="metric-tip">Disponíveis offline</span>
-          </div>
-          <div class="metric-card">
-            <h3>Prazos Ativos</h3>
-            <p class="metric-value" id="metric-deadlines">0</p>
-            <span class="metric-tip">Acompanhamento local</span>
-          </div>
-          <div class="metric-card">
-            <h3>Fila de Envio (Outbox)</h3>
-            <p class="metric-value" id="metric-outbox">0</p>
-            <span class="metric-tip">Aguardando entrega</span>
-          </div>
-        </div>
-
-        <div class="content-box">
-          <h2>Sobre o Modo Offline</h2>
-          <p>Se o Moodle da sua instituição cair ou apresentar <em>Bad Gateway</em>, seus arquivos, ementas e prazos salvos continuam acessíveis. Submeta tarefas na <strong>Fila Outbox</strong> para gerar seu <strong>comprovante criptográfico com carimbo RFC 3161</strong> e garantir a pontualidade do seu envio.</p>
-        </div>
+        <div class="hero-card"><div><p class="eyebrow">Proteção contínua</p><h2>Seu semestre segue seguro, mesmo offline.</h2><p>Consulte cursos e prazos salvos e deixe suas entregas preparadas para o próximo momento de conexão.</p></div><div class="hero-mark" aria-hidden="true"><span>✓</span><small>LOCAL<br>FIRST</small></div></div>
+        <div class="metrics-grid" aria-label="Resumo do sistema"><div class="metric-card"><span class="metric-icon course-icon">▤</span><div><h3>Cursos salvos</h3><p class="metric-value" id="metric-courses">0</p><span class="metric-tip">Disponíveis offline</span></div></div><div class="metric-card"><span class="metric-icon date-icon">◷</span><div><h3>Prazos ativos</h3><p class="metric-value" id="metric-deadlines">0</p><span class="metric-tip">Acompanhamento local</span></div></div><div class="metric-card"><span class="metric-icon outbox-icon">↑</span><div><h3>Fila de envio</h3><p class="metric-value" id="metric-outbox">0</p><span class="metric-tip">Aguardando entrega</span></div></div></div>
+        <div class="content-box info-box"><div class="info-icon">i</div><div><h2>Como funciona o modo offline</h2><p>Quando o Moodle estiver indisponível, seus conteúdos e prazos continuam acessíveis. Ao enfileirar uma tarefa, o 0spof registra um comprovante criptográfico com carimbo RFC 3161 para documentar o momento do envio.</p></div></div>
       </section>
-
-      <section id="tab-courses" class="tab-pane">
-        <div class="content-box">
-          <h2>Disciplinas Cacheadas</h2>
-          <div id="courses-list" class="item-list">Carregando disciplinas...</div>
-        </div>
-      </section>
-
-      <section id="tab-outbox" class="tab-pane">
-        <div class="content-box">
-          <h2>Fila de Submissões Pendentes</h2>
-          <div id="outbox-list" class="item-list">Nenhuma tarefa na fila de envio.</div>
-        </div>
-      </section>
-
-      <section id="tab-queue-modal" class="tab-pane">
-        <div class="content-box">
-          <h2>Enfileirar Submissão Offline</h2>
-          <form id="form-enqueue" class="submission-form">
-            <div class="form-group">
-              <label for="assign-id">ID da Tarefa no Moodle</label>
-              <input type="number" id="assign-id" required placeholder="Ex: 4512">
-            </div>
-
-            <div class="form-group">
-              <label for="file-path">Caminho do Arquivo no Computador</label>
-              <input type="text" id="file-path" required placeholder="C:\Users\...\trabalho.pdf">
-            </div>
-
-            <div class="form-group checkbox-group">
-              <input type="checkbox" id="check-tsa" checked>
-              <label for="check-tsa">Obter Carimbo de Tempo Público Auditável (RFC 3161 TSA)</label>
-            </div>
-
-            <button type="submit" class="btn btn-primary">🔒 Enfileirar com Selo Criptográfico</button>
-          </form>
-
-          <div id="enqueue-result" class="result-message"></div>
-        </div>
-      </section>
-
-      <section id="tab-settings" class="tab-pane">
-        <div class="content-box">
-          <h2>Conexão com Moodle Institucional (SUAP)</h2>
-          <form id="form-session" class="submission-form">
-            <div class="form-group">
-              <label for="moodle-url">URL do Moodle</label>
-              <input type="text" id="moodle-url" required placeholder="https://moodle.if.edu.br">
-            </div>
-
-            <div class="form-group">
-              <label for="moodle-cookie">Cookie de Sessão (MoodleSession)</label>
-              <input type="text" id="moodle-cookie" required placeholder="Valor do cookie MoodleSession">
-              <small style="color: var(--text-secondary); margin-top: 4px;">Gerado após o login via SUAP ou obtido no navegador.</small>
-            </div>
-
-            <button type="submit" class="btn btn-primary">💾 Salvar Sessão Conectada</button>
-          </form>
-
-          <div id="session-result" class="result-message"></div>
-        </div>
-      </section>
-
-      <div id="proof-modal" class="modal hidden">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h2>Dossiê Forense de Entrega</h2>
-            <button id="btn-close-modal" class="btn-close">&times;</button>
-          </div>
-          <pre id="proof-text" class="proof-pre"></pre>
-          <div class="modal-footer">
-            <button id="btn-copy-proof" class="btn btn-secondary">📋 Copiar Comprovante</button>
-          </div>
-        </div>
-      </div>
+      <section id="tab-courses" class="tab-pane"><div class="content-box"><div class="section-heading"><div><p class="eyebrow">Base local</p><h2>Disciplinas cacheadas</h2></div></div><div id="courses-list" class="item-list">Carregando disciplinas…</div></div></section>
+      <section id="tab-outbox" class="tab-pane"><div class="content-box"><div class="section-heading"><div><p class="eyebrow">Envios protegidos</p><h2>Fila de submissões</h2></div></div><div id="outbox-list" class="item-list">Nenhuma tarefa na fila de envio.</div></div></section>
+      <section id="tab-queue-modal" class="tab-pane"><div class="content-box form-card"><div class="section-heading"><div><p class="eyebrow">Nova entrega</p><h2>Enfileirar submissão offline</h2><p class="section-description">O arquivo será registrado localmente e enviado quando houver conexão.</p></div></div><form id="form-enqueue" class="submission-form"><div class="form-group"><label for="assign-id">ID da tarefa no Moodle</label><input type="number" id="assign-id" required placeholder="Ex.: 4512"></div><div class="form-group"><label for="file-path">Caminho do arquivo</label><input type="text" id="file-path" required placeholder="C:\Users\…\trabalho.pdf"></div><label class="checkbox-group"><input type="checkbox" id="check-tsa" checked><span><strong>Gerar carimbo de tempo auditável</strong><small>Usa uma autoridade de carimbo RFC 3161.</small></span></label><button type="submit" class="btn btn-primary submit-btn"><span aria-hidden="true">⌁</span> Enfileirar com selo criptográfico</button></form><div id="enqueue-result" class="result-message"></div></div></section>
+      <section id="tab-settings" class="tab-pane"><div class="content-box form-card"><div class="section-heading"><div><p class="eyebrow">Acesso institucional</p><h2>Conexão com Moodle / SUAP</h2><p class="section-description">As credenciais de sessão permitem sincronizar seus dados acadêmicos.</p></div></div><form id="form-session" class="submission-form"><div class="form-group"><label for="moodle-url">URL do Moodle</label><input type="url" id="moodle-url" required placeholder="https://moodle.if.edu.br"></div><div class="form-group"><label for="moodle-cookie">Cookie de sessão (MoodleSession)</label><input type="password" id="moodle-cookie" required placeholder="Valor do cookie MoodleSession"><small>Gerado após o login via SUAP ou obtido no navegador.</small></div><button type="submit" class="btn btn-primary submit-btn">Salvar sessão conectada</button></form><div id="session-result" class="result-message"></div></div></section>
+      <div id="proof-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="proof-title"><div class="modal-content"><div class="modal-header"><div><p class="eyebrow">Registro verificável</p><h2 id="proof-title">Dossiê de entrega</h2></div><button id="btn-close-modal" class="btn-close" aria-label="Fechar">×</button></div><pre id="proof-text" class="proof-pre"></pre><div class="modal-footer"><button id="btn-copy-proof" class="btn btn-secondary">Copiar comprovante</button></div></div></div>
     </main>
   </div>
   <script src="app.js"></script>
