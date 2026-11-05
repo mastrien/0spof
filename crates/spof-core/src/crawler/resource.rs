@@ -264,6 +264,52 @@ mod tests {
     }
 
     #[test]
+    fn test_classify_html_webm_and_other() {
+        assert_eq!(
+            classify_content_type("text/html; charset=utf-8", "https://moodle/mod/page"),
+            MediaClassification::AutoDownload {
+                mime: "text/html".to_string(),
+                extension: "html".to_string()
+            }
+        );
+        assert_eq!(
+            classify_content_type("application/octet-stream", "https://moodle/aula.webm"),
+            MediaClassification::ExplicitVideo {
+                mime: "video/webm".to_string(),
+                extension: "webm".to_string()
+            }
+        );
+        assert_eq!(
+            classify_content_type("image/jpeg", "https://moodle/foto"),
+            MediaClassification::AutoDownload {
+                mime: "image/jpeg".to_string(),
+                extension: "jpg".to_string()
+            }
+        );
+        assert_eq!(
+            classify_content_type("", "https://moodle/arquivo.zip"),
+            MediaClassification::Other {
+                mime: "application/octet-stream".to_string(),
+                extension: "bin".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn test_sanitize_filename() {
+        assert_eq!(
+            sanitize_filename("Slides: Aula 01/SQL", 2971, "pdf"),
+            "2971_Slides__Aula_01_SQL.pdf"
+        );
+        assert_eq!(sanitize_filename("???", 7, "html"), "resource_7.html");
+    }
+
+    #[test]
+    fn test_extract_pluginfile_url_absent() {
+        assert_eq!(extract_pluginfile_url("<p>Sem anexos</p>"), None);
+    }
+
+    #[test]
     fn test_extract_pluginfile_url() {
         let html = r#"
             <div class="resourceworkaround">

@@ -17,6 +17,16 @@ pub struct SyncSummary {
     pub resources_cached: usize,
 }
 
+/// A sessão é considerada expirada quando alguma página autenticada (`/my/`) redirecionou
+/// para o login e nenhum curso foi encontrado — a página raiz pública não conta como sucesso.
+pub(crate) fn is_session_rejected(
+    redirected_to_login: bool,
+    successful_responses: usize,
+    courses_found: usize,
+) -> bool {
+    redirected_to_login && (successful_responses == 0 || courses_found == 0)
+}
+
 fn default_cache_dir() -> PathBuf {
     if let Ok(custom) = std::env::var("SPOF_CACHE_DIR") {
         return PathBuf::from(custom);
@@ -169,7 +179,7 @@ impl CourseCrawler {
             }
         }
 
-        if successful_responses == 0 && redirected_to_login {
+        if is_session_rejected(redirected_to_login, successful_responses, all_courses.len()) {
             return Err(SpofError::Authentication(
                 "Sessão inválida ou expirada: o Moodle redirecionou a requisição para a tela de login. Por favor, atualize o cookie MoodleSession.".to_string(),
             ));

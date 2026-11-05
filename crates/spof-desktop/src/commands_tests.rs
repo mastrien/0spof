@@ -127,3 +127,22 @@ async fn test_desktop_enqueue_missing_file_error() {
     let res = handle_enqueue_submission(&db, 1, "arquivo_que_nao_existe.xyz", false).await;
     assert!(res.is_err());
 }
+
+#[tokio::test]
+async fn test_desktop_download_without_session_error() {
+    let db = Database::open_in_memory().unwrap();
+    let state = AppState::new(db);
+    let res = handle_download_activity_media(&state, 1, true).await;
+    assert!(res.unwrap_err().contains("Sessão Moodle não configurada"));
+}
+
+#[test]
+fn test_desktop_open_target_rejects_empty() {
+    assert!(handle_open_target("   ").is_err());
+}
+
+#[test]
+fn test_desktop_course_details_empty_course() {
+    let db = Database::open_in_memory().unwrap();
+    assert!(handle_get_course_details(&db, 404).unwrap().is_empty());
+}
