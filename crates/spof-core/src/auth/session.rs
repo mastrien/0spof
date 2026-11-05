@@ -18,9 +18,20 @@ pub struct MoodleSession {
 
 impl MoodleSession {
     pub fn new(base_url: String, session_cookie: String) -> Self {
+        let trimmed_cookie = session_cookie.trim();
+        let stripped_header = trimmed_cookie
+            .strip_prefix("Cookie:")
+            .unwrap_or(trimmed_cookie)
+            .trim();
+        let clean_cookie = stripped_header
+            .strip_prefix("MoodleSession=")
+            .unwrap_or(stripped_header)
+            .trim_matches(|c| c == ';' || c == '"' || c == ' ')
+            .to_string();
+
         Self {
-            session_cookie,
-            base_url,
+            session_cookie: clean_cookie,
+            base_url: base_url.trim().trim_end_matches('/').to_string(),
             sesskey: None,
             created_at: Utc::now(),
             expires_at: None,
@@ -129,6 +140,14 @@ mod tests {
 
         assert_eq!(session.cookie_header(), "MoodleSession=abc123session");
         assert!(!session.is_expired());
+
+        // Test with MoodleSession= prefix and semicolon
+        let session2 = MoodleSession::new(
+            "https://moodle.if.edu.br/".to_string(),
+            "MoodleSession=xyz789;".to_string(),
+        );
+        assert_eq!(session2.session_cookie, "xyz789");
+        assert_eq!(session2.base_url, "https://moodle.if.edu.br");
 
         // Set past expiration
         session.expires_at = Some(Utc::now() - Duration::hours(1));

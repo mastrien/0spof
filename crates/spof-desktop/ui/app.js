@@ -1,15 +1,22 @@
-const invoke = (window.__TAURI__ && window.__TAURI__.core)
-  ? window.__TAURI__.core.invoke
-  : async (cmd, args) => {
-      console.warn("Tauri runtime não detectado. Executando em mock local para o comando:", cmd, args);
-      if (cmd === "get_system_status") return { courses_count: 0, deadlines_count: 0, outbox_count: 0 };
-      if (cmd === "get_courses") return [];
-      if (cmd === "get_outbox_items") return [];
-      if (cmd === "get_session_info") return { is_authenticated: false, base_url: null };
-      if (cmd === "save_session") return { is_authenticated: true, base_url: args.baseUrl };
-      if (cmd === "sync_moodle") return { courses_synced: 1, sections_synced: 2, activities_synced: 3 };
-      return { message: "Mock response" };
-    };
+function getInvoke() {
+  if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === "function") {
+    return window.__TAURI__.core.invoke;
+  }
+  if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === "function") {
+    return window.__TAURI_INTERNALS__.invoke;
+  }
+  return null;
+}
+
+const invoke = async (cmd, args = {}) => {
+  const invoker = getInvoke();
+  if (!invoker) {
+    const errorMsg = "Tauri IPC bridge indisponível. A aplicação precisa rodar dentro da janela do 0spof.";
+    console.error(errorMsg, cmd, args);
+    throw new Error(errorMsg);
+  }
+  return await invoker(cmd, args);
+};
 
 // Gerenciamento de Abas
 const navItems = document.querySelectorAll(".nav-item");
@@ -53,6 +60,10 @@ async function refreshData() {
     if (sessionInfo.is_authenticated) {
       dot.className = "dot online";
       txt.innerText = "Conectado ao Moodle";
+      const urlInput = document.getElementById("moodle-url");
+      if (urlInput && !urlInput.value && sessionInfo.base_url) {
+        urlInput.value = sessionInfo.base_url;
+      }
     } else {
       dot.className = "dot offline";
       txt.innerText = "Sessão Desconectada";
@@ -78,7 +89,8 @@ async function loadCourses() {
         (c) => `
         <div class="list-item">
           <div>
-            <strong>[${c.shortname}]</strong> ${c.fullname}
+            <strong>${c.fullname}</strong><br>
+            <small>ID #${c.id} • ${c.sections_count || 0} seções • ${c.activities_count || 0} atividades</small>
           </div>
         </div>
       `
@@ -97,7 +109,6 @@ async function loadOutbox() {
       container.innerHTML = "<p>Nenhuma tarefa na fila de envio.</p>";
       return;
     }
-
     container.innerHTML = items
       .map(
         (item) => `
@@ -190,7 +201,11 @@ btnSync.addEventListener("click", async () => {
 
   try {
     const summary = await invoke("sync_moodle");
-    alert(`Sincronização concluída!\nCursos atualizados: ${summary.courses_synced}\nSeções indexadas: ${summary.sections_synced}\nAtividades catalogadas: ${summary.activities_synced}`);
+    if (summary.courses_synced === 0) {
+      alert(`Sincronização concluída, mas nenhum curso foi encontrado.\n\nVerifique:\n1. Se o cookie MoodleSession ainda é válido (reabra o Moodle no navegador e confira se não deslogou).\n2. Se o endereço base está correto (ex: https://moodle.instituicao.edu.br sem barra no final).`);
+    } else {
+      alert(`Sincronização concluída com sucesso!\nCursos atualizados: ${summary.courses_synced}\nSeções indexadas: ${summary.sections_synced}\nAtividades catalogadas: ${summary.activities_synced}`);
+    }
     await refreshData();
   } catch (err) {
     alert("Erro na sincronização: " + err);
@@ -208,7 +223,7 @@ const btnCopyProof = document.getElementById("btn-copy-proof");
 
 async function openProof(outboxId) {
   try {
-    const proof = await invoke("get_submission_proof", { id: parseInt(outboxId, 10) });
+    const proof = await invoke("get_submission_proof", { outboxId: parseInt(outboxId, 10) });
     proofText.innerText = proof.formatted_report;
     proofModal.classList.remove("hidden");
   } catch (err) {
