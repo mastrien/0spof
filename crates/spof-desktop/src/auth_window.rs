@@ -1,6 +1,11 @@
-use crate::commands::{handle_save_session, AppState};
+use crate::commands::AppState;
 use std::sync::Arc;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
+
+#[cfg(windows)]
+use crate::commands::handle_save_session;
+#[cfg(windows)]
+use tauri::Emitter;
 
 pub fn is_authenticated_moodle_url(url: &str) -> bool {
     let lower = url.to_ascii_lowercase();
