@@ -9,45 +9,235 @@
 <body>
   <div class="app-layout">
     <aside class="sidebar" aria-label="Navegação principal">
-      <div class="brand"><div class="logo-shield" aria-hidden="true">0<span>S</span></div><div><h2>0spof</h2><span class="sub">resiliência acadêmica</span></div></div>
+      <div class="brand">
+        <div class="logo-shield" aria-hidden="true">0<span>S</span></div>
+        <div>
+          <h2>0spof</h2>
+          <span class="sub">resiliência acadêmica</span>
+        </div>
+      </div>
       <nav class="nav-menu">
         <p class="nav-label">Workspace</p>
-        <button class="nav-item active" data-tab="dashboard"><span class="nav-icon">⌂</span> Visão geral</button>
-        <button class="nav-item" data-tab="courses"><span class="nav-icon">▤</span> Cursos e prazos</button>
-        <button class="nav-item" data-tab="outbox"><span class="nav-icon">↑</span> Fila de envio <span class="badge" id="outbox-count">0</span></button>
+        <button class="nav-item active" data-tab="dashboard">
+          <svg class="nav-svg" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Visão geral
+        </button>
+        <button class="nav-item" data-tab="courses">
+          <svg class="nav-svg" viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
+          Cursos e prazos
+        </button>
+        <button class="nav-item" data-tab="outbox">
+          <svg class="nav-svg" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+          Fila de envio <span class="badge" id="outbox-count">0</span>
+        </button>
         <p class="nav-label nav-label-spaced">Ações</p>
-        <button class="nav-item" data-tab="queue-modal"><span class="nav-icon">+</span> Nova submissão</button>
-        <button class="nav-item" data-tab="settings"><span class="nav-icon">⚙</span> Conexão Moodle</button>
+        <button class="nav-item" data-tab="queue-modal">
+          <svg class="nav-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+          Nova submissão
+        </button>
+        <button class="nav-item" data-tab="settings">
+          <svg class="nav-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Conexão Moodle
+        </button>
       </nav>
-      <div class="sidebar-footer"><div class="status-indicator"><span class="dot" id="session-dot"></span><span id="session-text">Verificando conexão…</span></div><p>Seus dados ficam disponíveis localmente.</p></div>
+      <div class="sidebar-footer">
+        <div class="status-indicator">
+          <span class="dot" id="session-dot"></span>
+          <span id="session-text">Verificando conexão…</span>
+        </div>
+        <p>Seus dados ficam disponíveis localmente.</p>
+      </div>
     </aside>
     <main class="main-content">
-      <header class="top-bar"><div class="page-heading"><p class="eyebrow">0spof / workspace</p><h1 id="tab-title">Painel de Resiliência</h1></div><div class="actions"><button id="btn-refresh" class="btn btn-ghost" title="Atualizar dados"><span aria-hidden="true">↻</span><span class="button-text">Atualizar</span></button><button id="btn-sync" class="btn btn-primary"><span aria-hidden="true">↯</span> Sincronizar Moodle</button></div></header>
+      <header class="top-bar">
+        <div class="page-heading">
+          <p class="eyebrow">0spof / workspace</p>
+          <h1 id="tab-title">Painel de Resiliência</h1>
+        </div>
+        <div class="actions">
+          <button id="btn-refresh" class="btn btn-ghost" title="Atualizar dados">
+            <svg class="btn-svg" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+            <span class="button-text">Atualizar</span>
+          </button>
+          <button id="btn-sync" class="btn btn-primary" title="Sincronizar com Moodle">
+            <svg class="btn-svg" viewBox="0 0 24 24"><path d="M12 2v8"/><path d="m4.93 10.93 4.24-4.24"/><path d="M2 18h20"/><path d="M20 10c0-4.42-3.58-8-8-8s-8 3.58-8 8"/><path d="m16 14 4 4-4 4"/></svg>
+            <span class="button-text">Sincronizar Moodle</span>
+          </button>
+        </div>
+      </header>
       <section id="tab-dashboard" class="tab-pane active">
-        <div class="hero-card"><div><p class="eyebrow">Proteção contínua</p><h2>Seu semestre segue seguro, mesmo offline.</h2><p>Consulte cursos, aulas, enunciados e recursos salvos localmente e deixe suas entregas preparadas com carimbo criptográfico.</p></div><div class="hero-mark" aria-hidden="true"><span>✓</span><small>LOCAL<br>FIRST</small></div></div>
-        <div class="metrics-grid" aria-label="Resumo do sistema"><div class="metric-card"><span class="metric-icon course-icon">▤</span><div><h3>Cursos salvos</h3><p class="metric-value" id="metric-courses">0</p><span class="metric-tip">Disponíveis offline</span></div></div><div class="metric-card"><span class="metric-icon date-icon">◷</span><div><h3>Prazos ativos</h3><p class="metric-value" id="metric-deadlines">0</p><span class="metric-tip">Acompanhamento local</span></div></div><div class="metric-card"><span class="metric-icon outbox-icon">↑</span><div><h3>Fila de envio</h3><p class="metric-value" id="metric-outbox">0</p><span class="metric-tip">Aguardando entrega</span></div></div></div>
-        <div class="content-box info-box"><div class="info-icon">i</div><div><h2>Como funciona o modo offline</h2><p>Ao sincronizar, o 0spof armazena todas as seções, enunciados e baixa automaticamente apostilas em PDF, imagens e páginas HTML. Vídeos são identificados e podem ser baixados sob demanda dentro da página de cada disciplina.</p></div></div>
+        <div class="hero-card">
+          <div>
+            <p class="eyebrow">Proteção contínua</p>
+            <h2>Seu semestre segue seguro, mesmo offline.</h2>
+            <p>Consulte cursos, aulas, enunciados e recursos salvos localmente e deixe suas entregas preparadas com carimbo criptográfico.</p>
+          </div>
+          <div class="hero-mark" aria-hidden="true">
+            <span>
+              <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            </span>
+            <small>LOCAL<br>FIRST</small>
+          </div>
+        </div>
+        <div class="metrics-grid" aria-label="Resumo do sistema">
+          <div class="metric-card">
+            <span class="metric-icon course-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
+            </span>
+            <div>
+              <h3>Cursos salvos</h3>
+              <p class="metric-value" id="metric-courses">0</p>
+              <span class="metric-tip">Disponíveis offline</span>
+            </div>
+          </div>
+          <div class="metric-card">
+            <span class="metric-icon date-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </span>
+            <div>
+              <h3>Prazos ativos</h3>
+              <p class="metric-value" id="metric-deadlines">0</p>
+              <span class="metric-tip">Acompanhamento local</span>
+            </div>
+          </div>
+          <div class="metric-card">
+            <span class="metric-icon outbox-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+            </span>
+            <div>
+              <h3>Fila de envio</h3>
+              <p class="metric-value" id="metric-outbox">0</p>
+              <span class="metric-tip">Aguardando entrega</span>
+            </div>
+          </div>
+        </div>
+        <div class="content-box info-box">
+          <div class="info-icon">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          </div>
+          <div>
+            <h2>Como funciona o modo offline</h2>
+            <p>Ao sincronizar, o 0spof armazena todas as seções, enunciados e baixa automaticamente apostilas em PDF, imagens e páginas HTML. Vídeos são identificados e podem ser baixados sob demanda dentro da página de cada disciplina.</p>
+          </div>
+        </div>
       </section>
       <section id="tab-courses" class="tab-pane">
         <div id="courses-master-view" class="content-box">
-          <div class="section-heading"><div><p class="eyebrow">Base local</p><h2>Disciplinas cacheadas (clique para abrir)</h2></div></div>
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Base local</p>
+              <h2>Disciplinas cacheadas (clique para abrir)</h2>
+            </div>
+          </div>
           <div id="courses-list" class="item-list">Carregando disciplinas…</div>
         </div>
         <div id="course-detail-view" class="content-box" style="display:none;">
           <div class="section-heading">
             <div>
-              <button id="btn-back-courses" class="btn btn-secondary" style="margin-bottom:12px;">← Voltar para todas as disciplinas</button>
+              <button id="btn-back-courses" class="btn-back-link">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2.2"><path d="m15 18-6-6 6-6"/></svg>
+                Voltar para todas as disciplinas
+              </button>
               <p class="eyebrow" id="course-detail-short">DISCIPLINA</p>
               <h2 id="course-detail-title">Nome da Disciplina</h2>
             </div>
           </div>
-          <div id="course-sections-list" class="item-list">Carregando seções…</div>
+          <div class="course-detail-layout">
+            <aside class="course-toc" aria-label="Sumário da disciplina">
+              <h3 class="toc-title">Sumário de seções</h3>
+              <nav id="course-toc-nav" class="toc-nav">
+                <!-- Populado dinamicamente -->
+              </nav>
+            </aside>
+            <div id="course-sections-list" class="course-sections-content">Carregando seções…</div>
+          </div>
         </div>
       </section>
-      <section id="tab-outbox" class="tab-pane"><div class="content-box"><div class="section-heading"><div><p class="eyebrow">Envios protegidos</p><h2>Fila de submissões</h2></div></div><div id="outbox-list" class="item-list">Nenhuma tarefa na fila de envio.</div></div></section>
-      <section id="tab-queue-modal" class="tab-pane"><div class="content-box form-card"><div class="section-heading"><div><p class="eyebrow">Nova entrega</p><h2>Enfileirar submissão offline</h2><p class="section-description">O arquivo será registrado localmente e enviado quando houver conexão.</p></div></div><form id="form-enqueue" class="submission-form"><div class="form-group"><label for="assign-id">ID da tarefa no Moodle</label><input type="number" id="assign-id" required placeholder="Ex.: 4512"></div><div class="form-group"><label for="file-path">Caminho do arquivo</label><input type="text" id="file-path" required placeholder="C:\Users\…\trabalho.pdf"></div><label class="checkbox-group"><input type="checkbox" id="check-tsa" checked><span><strong>Gerar carimbo de tempo auditável</strong><small>Usa uma autoridade de carimbo RFC 3161.</small></span></label><button type="submit" class="btn btn-primary submit-btn"><span aria-hidden="true">⌁</span> Enfileirar com selo criptográfico</button></form><div id="enqueue-result" class="result-message"></div></div></section>
-      <section id="tab-settings" class="tab-pane"><div class="content-box form-card"><div class="section-heading"><div><p class="eyebrow">Acesso institucional</p><h2>Conexão com Moodle / SUAP</h2><p class="section-description">As credenciais de sessão permitem sincronizar seus dados acadêmicos.</p></div></div><form id="form-session" class="submission-form"><div class="form-group"><label for="moodle-url">URL do Moodle</label><input type="url" id="moodle-url" required placeholder="https://moodle.if.edu.br"></div><div class="form-group"><label for="moodle-cookie">Cookie de sessão (MoodleSession)</label><input type="password" id="moodle-cookie" required placeholder="Valor do cookie MoodleSession"><small>Gerado após o login via SUAP ou obtido no navegador.</small></div><button type="submit" class="btn btn-primary submit-btn">Salvar sessão conectada</button></form><div id="session-result" class="result-message"></div></div></section>
-      <div id="proof-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="proof-title"><div class="modal-content"><div class="modal-header"><div><p class="eyebrow">Registro verificável</p><h2 id="proof-title">Dossiê de entrega</h2></div><button id="btn-close-modal" class="btn-close" aria-label="Fechar">×</button></div><pre id="proof-text" class="proof-pre"></pre><div class="modal-footer"><button id="btn-copy-proof" class="btn btn-secondary">Copiar comprovante</button></div></div></div>
+      <section id="tab-outbox" class="tab-pane">
+        <div class="content-box">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Envios protegidos</p>
+              <h2>Fila de submissões</h2>
+            </div>
+          </div>
+          <div id="outbox-list" class="item-list">Nenhuma tarefa na fila de envio.</div>
+        </div>
+      </section>
+      <section id="tab-queue-modal" class="tab-pane">
+        <div class="content-box form-card">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Nova entrega</p>
+              <h2>Enfileirar submissão offline</h2>
+              <p class="section-description">O arquivo será registrado localmente e enviado quando houver conexão.</p>
+            </div>
+          </div>
+          <form id="form-enqueue" class="submission-form">
+            <div class="form-group">
+              <label for="assign-id">ID da tarefa no Moodle</label>
+              <input type="number" id="assign-id" required placeholder="Ex.: 4512">
+            </div>
+            <div class="form-group">
+              <label for="file-path">Caminho do arquivo</label>
+              <input type="text" id="file-path" required placeholder="C:\Users\…\trabalho.pdf">
+            </div>
+            <label class="checkbox-group">
+              <input type="checkbox" id="check-tsa" checked>
+              <span>
+                <strong>Gerar carimbo de tempo auditável</strong>
+                <small>Usa uma autoridade de carimbo RFC 3161.</small>
+              </span>
+            </label>
+            <button type="submit" class="btn btn-primary submit-btn">
+              <svg class="btn-svg" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              Enfileirar com selo criptográfico
+            </button>
+          </form>
+          <div id="enqueue-result" class="result-message"></div>
+        </div>
+      </section>
+      <section id="tab-settings" class="tab-pane">
+        <div class="content-box form-card">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Acesso institucional</p>
+              <h2>Conexão com Moodle / SUAP</h2>
+              <p class="section-description">As credenciais de sessão permitem sincronizar seus dados acadêmicos.</p>
+            </div>
+          </div>
+          <form id="form-session" class="submission-form">
+            <div class="form-group">
+              <label for="moodle-url">URL do Moodle</label>
+              <input type="url" id="moodle-url" required placeholder="https://moodle.if.edu.br">
+            </div>
+            <div class="form-group">
+              <label for="moodle-cookie">Cookie de sessão (MoodleSession)</label>
+              <input type="password" id="moodle-cookie" required placeholder="Valor do cookie MoodleSession">
+              <small>Gerado após o login via SUAP ou obtido no navegador.</small>
+            </div>
+            <button type="submit" class="btn btn-primary submit-btn">Salvar sessão conectada</button>
+          </form>
+          <div id="session-result" class="result-message"></div>
+        </div>
+      </section>
+      <div id="proof-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="proof-title">
+        <div class="modal-content">
+          <div class="modal-header">
+            <div>
+              <p class="eyebrow">Registro verificável</p>
+              <h2 id="proof-title">Dossiê de entrega</h2>
+            </div>
+            <button id="btn-close-modal" class="btn-close" aria-label="Fechar">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+          <pre id="proof-text" class="proof-pre"></pre>
+          <div class="modal-footer">
+            <button id="btn-copy-proof" class="btn btn-secondary">Copiar comprovante</button>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
   <script src="app.js"></script>

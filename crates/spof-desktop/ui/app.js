@@ -88,7 +88,10 @@ async function loadCourses() {
             <strong>${c.fullname}</strong><br>
             <small>ID #${c.id} • ${c.sections_count || 0} seções • ${c.activities_count || 0} atividades</small>
           </div>
-          <button class="btn btn-secondary btn-open-course" data-course-id="${c.id}">Abrir disciplina →</button>
+          <button class="btn btn-secondary btn-open-course" data-course-id="${c.id}">
+            Abrir disciplina
+            <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </button>
         </div>
       `
       )
@@ -106,16 +109,16 @@ async function loadCourses() {
 }
 
 function getActivityBadge(actType) {
-  const map = {
-    assign: "📝 Tarefa",
-    resource: "📄 Arquivo/Slide",
-    folder: "📁 Pasta",
-    url: "🔗 Link Externo",
-    forum: "💬 Fórum",
-    quiz: "✅ Questionário",
-    page: "📃 Página",
+  const icons = {
+    assign: `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> <span>Tarefa</span>`,
+    resource: `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> <span>Arquivo</span>`,
+    folder: `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> <span>Pasta</span>`,
+    url: `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> <span>Link Externo</span>`,
+    forum: `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> <span>Fórum</span>`,
+    quiz: `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> <span>Questionário</span>`,
+    page: `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> <span>Página</span>`,
   };
-  return map[actType] || `📌 ${actType}`;
+  return icons[actType] || `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg> <span>${actType}</span>`;
 }
 
 async function openCourseDetail(courseId) {
@@ -126,14 +129,41 @@ async function openCourseDetail(courseId) {
   document.getElementById("course-detail-title").innerText = course ? course.fullname : `Disciplina #${courseId}`;
 
   const sectionsContainer = document.getElementById("course-sections-list");
+  const tocNav = document.getElementById("course-toc-nav");
   sectionsContainer.innerHTML = "<p>Carregando seções e atividades…</p>";
+  tocNav.innerHTML = "";
 
   try {
     const sections = await invoke("get_course_details", { courseId });
     if (!sections || sections.length === 0) {
       sectionsContainer.innerHTML = "<p>Nenhuma seção encontrada para esta disciplina.</p>";
+      tocNav.innerHTML = "<small style='color:var(--muted);'>Sem seções</small>";
       return;
     }
+
+    // Renderiza sumário na lateral
+    tocNav.innerHTML = sections
+      .map(
+        (sec, idx) => `
+        <a class="toc-link" data-target-sec="sec-${sec.id}" title="${sec.name}">
+          ${idx + 1}. ${sec.name}
+        </a>
+      `
+      )
+      .join("");
+
+    tocNav.querySelectorAll(".toc-link").forEach((link) => {
+      link.addEventListener("click", (e) => {
+        e.preventDefault();
+        const targetId = link.getAttribute("data-target-sec");
+        const targetEl = document.getElementById(targetId);
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+          tocNav.querySelectorAll(".toc-link").forEach((l) => l.classList.remove("active"));
+          link.classList.add("active");
+        }
+      });
+    });
 
     sectionsContainer.innerHTML = sections
       .map((sec) => {
@@ -151,27 +181,63 @@ async function openCourseDetail(courseId) {
 
                   let actionsHtml = "";
                   if (act.activity_type === "assign") {
-                    actionsHtml += `<button class="btn btn-primary btn-queue-assign" data-assign-id="${act.id}" style="padding:6px 10px;font-size:12px;">⌁ Enfileirar entrega (#${act.id})</button>`;
+                    actionsHtml += `
+                      <button class="btn btn-primary btn-queue-assign" data-assign-id="${act.id}" style="height:32px;padding:0 10px;font-size:12px;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        Enfileirar entrega (#${act.id})
+                      </button>
+                    `;
                   }
+
                   if (hasLocalFile) {
-                    actionsHtml += `<button class="btn btn-secondary btn-open-local" data-target="${act.local_file_path}" style="padding:6px 10px;font-size:12px;">📂 Abrir cópia offline (${act.content_mime || "arquivo"})</button>`;
+                    actionsHtml += `
+                      <button class="btn btn-secondary btn-open-local" data-target="${act.local_file_path}" style="height:32px;padding:0 10px;font-size:12px;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        Abrir cópia offline
+                      </button>
+                    `;
                   } else if (isVideo) {
-                    actionsHtml += `<button class="btn btn-secondary btn-download-media" data-act-id="${act.id}" data-video="true" style="padding:6px 10px;font-size:12px;">🎬 Baixar vídeo offline</button>`;
+                    actionsHtml += `
+                      <button class="btn btn-secondary btn-download-media" data-act-id="${act.id}" data-video="true" style="height:32px;padding:0 10px;font-size:12px;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        Baixar vídeo offline
+                      </button>
+                    `;
                   } else if (act.activity_type === "resource" || act.activity_type === "page") {
-                    actionsHtml += `<button class="btn btn-secondary btn-download-media" data-act-id="${act.id}" data-video="false" style="padding:6px 10px;font-size:12px;">⬇ Baixar recurso offline</button>`;
+                    actionsHtml += `
+                      <button class="btn btn-secondary btn-download-media" data-act-id="${act.id}" data-video="false" style="height:32px;padding:0 10px;font-size:12px;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Baixar recurso
+                      </button>
+                    `;
                   }
+
                   if (act.url) {
-                    actionsHtml += `<button class="btn btn-ghost btn-open-url" data-target="${act.url}" style="padding:6px 10px;font-size:12px;">🌐 Abrir no Moodle</button>`;
+                    if (act.activity_type === "url") {
+                      actionsHtml += `
+                        <button class="btn btn-primary btn-open-url" data-target="${act.url}" style="height:32px;padding:0 10px;font-size:12px;">
+                          <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                          Acessar link externo
+                        </button>
+                      `;
+                    } else {
+                      actionsHtml += `
+                        <button class="btn-discreet btn-open-url" data-target="${act.url}" title="Abrir página desta atividade no Moodle institucional">
+                          <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                          Abrir no Moodle
+                        </button>
+                      `;
+                    }
                   }
 
                   return `
                     <div class="list-item" style="align-items:flex-start;flex-direction:column;gap:8px;margin-top:8px;">
-                      <div style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;">
-                        <div>
-                          <span class="status-badge pending" style="margin-right:6px;">${getActivityBadge(act.activity_type)}</span>
+                      <div style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                          <span class="status-badge pending">${getActivityBadge(act.activity_type)}</span>
                           <strong>${act.title}</strong> <small>(ID #${act.id})</small>
                         </div>
-                        <div style="display:flex;gap:6px;flex-wrap:wrap;">${actionsHtml}</div>
+                        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">${actionsHtml}</div>
                       </div>
                       ${descHtml}
                     </div>
@@ -180,7 +246,7 @@ async function openCourseDetail(courseId) {
                 .join("");
 
         return `
-          <div style="border:1px solid #e8ebf2;border-radius:12px;padding:16px 18px;background:#fff;margin-bottom:12px;">
+          <div id="sec-${sec.id}" style="border:1px solid #e8ebf2;border-radius:12px;padding:16px 18px;background:#fff;scroll-margin-top:20px;">
             <h3 style="font-size:16px;color:#18223a;margin-bottom:6px;">${sec.name}</h3>
             ${summaryHtml}
             <div>${activitiesHtml}</div>
@@ -212,9 +278,9 @@ async function openCourseDetail(courseId) {
       btn.addEventListener("click", async () => {
         const activityId = parseInt(btn.getAttribute("data-act-id"), 10);
         const allowVideo = btn.getAttribute("data-video") === "true";
-        const originalText = btn.innerText;
+        const originalText = btn.innerHTML;
         btn.disabled = true;
-        btn.innerText = "⏳ Baixando...";
+        btn.innerText = "Baixando...";
         try {
           const savedPath = await invoke("download_activity_media", { activityId, allowVideo });
           if (savedPath) {
@@ -226,7 +292,7 @@ async function openCourseDetail(courseId) {
         } catch (err) {
           alert("Erro ao baixar recurso: " + err);
           btn.disabled = false;
-          btn.innerText = originalText;
+          btn.innerHTML = originalText;
         }
       });
     });
@@ -256,9 +322,12 @@ async function loadOutbox() {
             <strong>Tarefa #${item.assign_id}:</strong> ${item.filename}<br>
             <small>Tentativas: ${item.retry_count} | Hash: ${item.file_hash.substring(0, 16)}...</small>
           </div>
-          <div>
+          <div style="display:flex;align-items:center;gap:8px;">
             <span class="status-badge ${item.status}">${item.status}</span>
-            <button class="btn btn-secondary btn-proof" data-id="${item.id}" style="margin-left: 10px; padding: 6px 10px;">📜 Ver Dossiê</button>
+            <button class="btn btn-secondary btn-proof" data-id="${item.id}" style="height:30px;padding:0 10px;font-size:12px;">
+              <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              Ver Dossiê
+            </button>
           </div>
         </div>
       `
@@ -327,8 +396,8 @@ formSession.addEventListener("submit", async (e) => {
 const btnSync = document.getElementById("btn-sync");
 btnSync.addEventListener("click", async () => {
   btnSync.disabled = true;
-  const originalText = btnSync.innerText;
-  btnSync.innerText = "⏳ Sincronizando...";
+  const originalText = btnSync.innerHTML;
+  btnSync.innerText = "Sincronizando...";
 
   try {
     const summary = await invoke("sync_moodle");
@@ -344,7 +413,7 @@ btnSync.addEventListener("click", async () => {
     alert("Erro na sincronização: " + err);
   } finally {
     btnSync.disabled = false;
-    btnSync.innerText = originalText;
+    btnSync.innerHTML = originalText;
   }
 });
 

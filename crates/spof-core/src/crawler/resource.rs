@@ -109,6 +109,22 @@ pub fn extract_pluginfile_url(html: &str) -> Option<(String, bool)> {
     None
 }
 
+pub fn extract_workaround_url(html: &str) -> Option<String> {
+    let document = Html::parse_document(html);
+    if let Ok(sel) = Selector::parse(
+        ".urlworkaround a[href], .resourcecontent a[href], div[role='main'] a[href^='http']",
+    ) {
+        for el in document.select(&sel) {
+            if let Some(href) = el.value().attr("href") {
+                if !href.contains("/mod/url/view.php") {
+                    return Some(href.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 pub fn sanitize_filename(title: &str, activity_id: i64, extension: &str) -> String {
     let safe_chars: String = title
         .chars()
@@ -128,6 +144,36 @@ pub fn sanitize_filename(title: &str, activity_id: i64, extension: &str) -> Stri
         format!("{}_{}", activity_id, trimmed)
     };
     format!("{}.{}", base, extension)
+}
+
+pub async fn resolve_external_url(
+    http: &reqwest::Client,
+    session: &MoodleSession,
+    activity_url: &str,
+) -> Result<Option<String>> {
+    let resp = http
+        .get(activity_url)
+        .header(COOKIE, session.cookie_header())
+        .send()
+        .await
+        .map_err(|e| SpofError::Network(format!("Erro ao resolver link externo: {}", e)))?;
+
+    let final_url = resp.url().as_str().to_string();
+    if final_url.contains("/login/") || final_url.contains("login.php") {
+        return Ok(None);
+    }
+
+    if !final_url.contains("/mod/url/view.php") {
+        return Ok(Some(final_url));
+    }
+
+    if let Ok(body) = resp.text().await {
+        if let Some(url) = extract_workaround_url(&body) {
+            return Ok(Some(url));
+        }
+    }
+
+    Ok(None)
 }
 
 pub async fn download_activity_resource(
@@ -234,103 +280,6 @@ pub async fn download_activity_resource(
     }
 }
 
+#[path = "resource_tests.rs"]
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_classify_content_type() {
-        assert_eq!(
-            classify_content_type("application/pdf; charset=binary", "https://moodle/file"),
-            MediaClassification::AutoDownload {
-                mime: "application/pdf".to_string(),
-                extension: "pdf".to_string()
-            }
-        );
-        assert_eq!(
-            classify_content_type("image/png", "https://moodle/img.png"),
-            MediaClassification::AutoDownload {
-                mime: "image/png".to_string(),
-                extension: "png".to_string()
-            }
-        );
-        assert_eq!(
-            classify_content_type("video/mp4", "https://moodle/aula.mp4"),
-            MediaClassification::ExplicitVideo {
-                mime: "video/mp4".to_string(),
-                extension: "mp4".to_string()
-            }
-        );
-    }
-
-    #[test]
-    fn test_classify_html_webm_and_other() {
-        assert_eq!(
-            classify_content_type("text/html; charset=utf-8", "https://moodle/mod/page"),
-            MediaClassification::AutoDownload {
-                mime: "text/html".to_string(),
-                extension: "html".to_string()
-            }
-        );
-        assert_eq!(
-            classify_content_type("application/octet-stream", "https://moodle/aula.webm"),
-            MediaClassification::ExplicitVideo {
-                mime: "video/webm".to_string(),
-                extension: "webm".to_string()
-            }
-        );
-        assert_eq!(
-            classify_content_type("image/jpeg", "https://moodle/foto"),
-            MediaClassification::AutoDownload {
-                mime: "image/jpeg".to_string(),
-                extension: "jpg".to_string()
-            }
-        );
-        assert_eq!(
-            classify_content_type("", "https://moodle/arquivo.zip"),
-            MediaClassification::Other {
-                mime: "application/octet-stream".to_string(),
-                extension: "bin".to_string()
-            }
-        );
-    }
-
-    #[test]
-    fn test_sanitize_filename() {
-        assert_eq!(
-            sanitize_filename("Slides: Aula 01/SQL", 2971, "pdf"),
-            "2971_Slides__Aula_01_SQL.pdf"
-        );
-        assert_eq!(sanitize_filename("???", 7, "html"), "resource_7.html");
-    }
-
-    #[test]
-    fn test_extract_pluginfile_url_absent() {
-        assert_eq!(extract_pluginfile_url("<p>Sem anexos</p>"), None);
-    }
-
-    #[test]
-    fn test_extract_pluginfile_url() {
-        let html = r#"
-            <div class="resourceworkaround">
-                Clique em <a href="https://moodle/pluginfile.php/123/mod_resource/content/1/slides.pdf">slides.pdf</a>
-            </div>
-        "#;
-        assert_eq!(
-            extract_pluginfile_url(html),
-            Some((
-                "https://moodle/pluginfile.php/123/mod_resource/content/1/slides.pdf".to_string(),
-                false
-            ))
-        );
-
-        let video_html = r#"<video><source src="https://moodle/pluginfile.php/55/video.mp4" type="video/mp4"></video>"#;
-        assert_eq!(
-            extract_pluginfile_url(video_html),
-            Some((
-                "https://moodle/pluginfile.php/55/video.mp4".to_string(),
-                true
-            ))
-        );
-    }
-}
+mod tests;
