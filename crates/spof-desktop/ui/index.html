@@ -203,22 +203,48 @@
             <div>
               <p class="eyebrow">Acesso institucional</p>
               <h2>Conexão com Moodle / SUAP</h2>
-              <p class="section-description">As credenciais de sessão permitem sincronizar seus dados acadêmicos.</p>
+              <p class="section-description">Conecte sua conta institucional para sincronizar disciplinas, materiais e prazos de entrega.</p>
             </div>
           </div>
-          <form id="form-session" class="submission-form">
-            <div class="form-group">
+
+          <!-- Login Automático Nativo via Webview (Recomendado) -->
+          <div class="auto-login-card">
+            <div class="auto-login-header">
+              <div class="auto-login-icon">
+                <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </div>
+              <div>
+                <h3>Login Automático via SUAP / Moodle</h3>
+                <p>Abre a janela oficial de login institucional. Basta entrar com suas credenciais do SUAP e o 0spof capturará sua sessão automaticamente, sem necessidade de copiar cookies manuais.</p>
+              </div>
+            </div>
+            <div class="form-group" style="margin-top:14px;max-width:440px;">
               <label for="moodle-url">URL do Moodle</label>
-              <input type="url" id="moodle-url" required placeholder="https://moodle.if.edu.br">
+              <input type="url" id="moodle-url" required placeholder="https://moodle2.jcr.ifsp.edu.br" value="https://moodle2.jcr.ifsp.edu.br">
             </div>
-            <div class="form-group">
-              <label for="moodle-cookie">Cookie de sessão (MoodleSession)</label>
-              <input type="password" id="moodle-cookie" required placeholder="Valor do cookie MoodleSession">
-              <small>Gerado após o login via SUAP ou obtido no navegador.</small>
+            <div style="display:flex;gap:12px;align-items:center;margin-top:14px;flex-wrap:wrap;">
+              <button id="btn-auto-login" class="btn btn-primary" type="button">
+                <svg class="btn-svg" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                <span>Conectar via SUAP / Moodle</span>
+              </button>
+              <span id="auto-login-spinner" style="display:none;font-size:12px;color:var(--muted);">Aguardando login na janela institucional…</span>
             </div>
-            <button type="submit" class="btn btn-primary submit-btn">Salvar sessão conectada</button>
-          </form>
+          </div>
+
           <div id="session-result" class="result-message"></div>
+
+          <!-- Fallback Manual Avançado -->
+          <details class="manual-cookie-details">
+            <summary>Configuração manual avançada (inserir cookie manualmente)</summary>
+            <form id="form-session" class="submission-form" style="margin-top:14px;">
+              <div class="form-group">
+                <label for="moodle-cookie">Cookie de sessão (MoodleSession)</label>
+                <input type="password" id="moodle-cookie" placeholder="Valor do cookie MoodleSession">
+                <small>Útil caso prefira inserir manualmente o cookie de sessão obtido pelo navegador.</small>
+              </div>
+              <button type="submit" class="btn btn-secondary submit-btn">Salvar cookie manual</button>
+            </form>
+          </details>
         </div>
       </section>
       <div id="proof-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="proof-title">

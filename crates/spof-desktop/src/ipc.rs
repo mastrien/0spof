@@ -1,3 +1,4 @@
+use crate::auth_window::handle_open_moodle_login_window;
 use crate::commands::*;
 use crate::dto::{
     CourseDto, EnqueueResultDto, OutboxItemDto, ProofDto, SectionDto, SessionInfoDto,
@@ -81,4 +82,13 @@ pub async fn download_activity_media(
 #[tauri::command]
 pub fn open_target(target: String) -> Result<(), String> {
     handle_open_target(&target)
+}
+
+#[tauri::command]
+pub fn open_moodle_login_window(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+    base_url: Option<String>,
+) -> Result<(), String> {
+    handle_open_moodle_login_window(app, (*state).clone(), base_url)
 }

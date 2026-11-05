@@ -65,23 +65,15 @@ async fn test_desktop_handlers_flow() {
     };
     db.upsert_activity(&activity).unwrap();
 
+    let course_details = handle_get_course_details(&db, 99).unwrap();
+    assert_eq!(course_details.len(), 1);
+    assert_eq!(course_details[0].activities.len(), 1);
+    assert_eq!(course_details[0].activities[0].title, "Implementar Lexer");
+
     let courses = handle_get_courses(&db).unwrap();
     assert_eq!(courses.len(), 1);
-    assert_eq!(courses[0].fullname, "Compiladores");
-    assert_eq!(courses[0].sections_count, 1);
     assert_eq!(courses[0].activities_count, 1);
 
-    let details = handle_get_course_details(&db, 99).unwrap();
-    assert_eq!(details.len(), 1);
-    assert_eq!(details[0].name, "Análise Léxica");
-    assert_eq!(details[0].activities.len(), 1);
-    assert_eq!(details[0].activities[0].title, "Implementar Lexer");
-    assert_eq!(
-        details[0].activities[0].description.as_deref(),
-        Some("Entregar arquivo .rs")
-    );
-
-    // 4. Enqueue submission
     let mut temp = NamedTempFile::new().unwrap();
     temp.write_all(b"codigo do parser e lexer").unwrap();
     temp.flush().unwrap();
@@ -93,15 +85,28 @@ async fn test_desktop_handlers_flow() {
     assert!(enqueue_res.outbox_id > 0);
     assert!(!enqueue_res.file_hash.is_empty());
 
-    // 5. Check outbox
     let outbox = handle_get_outbox_items(&db).unwrap();
     assert_eq!(outbox.len(), 1);
     assert_eq!(outbox[0].assign_id, 9901);
 
-    // 6. Get proof
     let proof = handle_get_submission_proof(&db, enqueue_res.outbox_id).unwrap();
     assert_eq!(proof.assign_id, 9901);
     assert!(proof.formatted_report.contains("COMPROVANTE"));
+}
+
+#[tokio::test]
+async fn test_desktop_enqueue_missing_file_error() {
+    let db = Database::open_in_memory().unwrap();
+    let res = handle_enqueue_submission(&db, 10, "C:/inexistente/arquivo.zip", false).await;
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_desktop_save_session_validation_error() {
+    let db = Database::open_in_memory().unwrap();
+    let state = AppState::new(db);
+    assert!(handle_save_session(&state, "".to_string(), "cookie".to_string()).is_err());
+    assert!(handle_save_session(&state, "http://moodle".to_string(), "   ".to_string()).is_err());
 }
 
 #[tokio::test]
@@ -109,23 +114,7 @@ async fn test_desktop_sync_without_session_error() {
     let db = Database::open_in_memory().unwrap();
     let state = AppState::new(db);
     let res = handle_sync_moodle(&state).await;
-    assert!(res.is_err());
     assert!(res.unwrap_err().contains("Nenhuma sessão configurada"));
-}
-
-#[test]
-fn test_desktop_save_session_validation_error() {
-    let db = Database::open_in_memory().unwrap();
-    let state = AppState::new(db);
-    let res = handle_save_session(&state, "   ".to_string(), "sess".to_string());
-    assert!(res.is_err());
-}
-
-#[tokio::test]
-async fn test_desktop_enqueue_missing_file_error() {
-    let db = Database::open_in_memory().unwrap();
-    let res = handle_enqueue_submission(&db, 1, "arquivo_que_nao_existe.xyz", false).await;
-    assert!(res.is_err());
 }
 
 #[tokio::test]

@@ -777,6 +777,63 @@ h2 {
   background: #fff0f1;
 }
 
+/* Card de Login Automático Webview */
+.auto-login-card {
+  padding: 18px 20px;
+  background: #f7f9fd;
+  border: 1px solid #dce4f4;
+  border-radius: 12px;
+  margin-bottom: 18px;
+}
+
+.auto-login-header {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.auto-login-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: #eaf0ff;
+  color: var(--blue);
+  flex: none;
+}
+
+.auto-login-header h3 {
+  font-size: 15px;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.auto-login-header p {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.manual-cookie-details {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.manual-cookie-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #556480;
+  user-select: none;
+}
+
+.manual-cookie-details summary:hover {
+  color: var(--blue);
+}
+
 .modal {
   position: fixed;
   inset: 0;
