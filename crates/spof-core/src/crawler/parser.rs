@@ -1,3 +1,4 @@
+pub use crate::crawler::ajax::parse_ajax_enrolled_courses;
 use crate::models::{Activity, ActivityType, Course, Section};
 use chrono::{DateTime, Utc};
 use scraper::{Html, Selector};
@@ -11,7 +12,7 @@ pub struct AssignmentDetails {
     pub time_remaining: Option<String>,
 }
 
-/// Parses the Moodle Dashboard (`/my/`) HTML to extract enrolled courses.
+/// Parses the Moodle Dashboard (`/my/` or `/my/courses.php`) HTML to extract enrolled courses.
 pub fn parse_dashboard_courses(html: &str) -> Vec<Course> {
     let document = Html::parse_document(html);
     let link_selector = Selector::parse("a[href*='/course/view.php?id=']").unwrap();
@@ -24,17 +25,33 @@ pub fn parse_dashboard_courses(html: &str) -> Vec<Course> {
             if let Some(course_id) = extract_id_from_url(href) {
                 if seen_course_ids.insert(course_id) {
                     let text = element.text().collect::<Vec<_>>().join(" ");
-                    let title = text.trim().to_string();
+                    let mut title = text.trim().to_string();
 
-                    if !title.is_empty() && !title.eq_ignore_ascii_case("visualizar") {
-                        courses.push(Course {
-                            id: course_id,
-                            fullname: title.clone(),
-                            shortname: format!("CURSO-{}", course_id),
-                            summary: None,
-                            last_synced_at: Some(Utc::now()),
-                        });
+                    if is_generic_link_label(&title) {
+                        if let Some(aria) = element.value().attr("aria-label") {
+                            let clean_aria = aria.trim();
+                            if !clean_aria.is_empty() {
+                                title = clean_aria.to_string();
+                            }
+                        } else if let Some(attr_title) = element.value().attr("title") {
+                            let clean_title = attr_title.trim();
+                            if !clean_title.is_empty() {
+                                title = clean_title.to_string();
+                            }
+                        }
                     }
+
+                    if is_generic_link_label(&title) {
+                        title = format!("Disciplina #{}", course_id);
+                    }
+
+                    courses.push(Course {
+                        id: course_id,
+                        fullname: title,
+                        shortname: format!("CURSO-{}", course_id),
+                        summary: None,
+                        last_synced_at: Some(Utc::now()),
+                    });
                 }
             }
         }
@@ -43,39 +60,61 @@ pub fn parse_dashboard_courses(html: &str) -> Vec<Course> {
     courses
 }
 
+fn is_generic_link_label(label: &str) -> bool {
+    label.is_empty()
+        || label.eq_ignore_ascii_case("visualizar")
+        || label.eq_ignore_ascii_case("acessar")
+}
+
 /// Parses a Moodle Course Page (`/course/view.php?id=...`) to extract sections and activities.
 pub fn parse_course_sections(html: &str, course_id: i64) -> Vec<Section> {
     let document = Html::parse_document(html);
     let section_selector = Selector::parse("li.section, div.section, .course-section").unwrap();
     let title_selector = Selector::parse(".sectionname, .section-title, h3, h4").unwrap();
-    let activity_selector = Selector::parse("li.activity, .activity-item").unwrap();
+    let li_activity_selector = Selector::parse("li.activity").unwrap();
+    let fallback_activity_selector = Selector::parse(".activity-item").unwrap();
 
     let mut sections = Vec::new();
-    let mut default_section_id = course_id * 1000;
+    let mut seen_section_ids = std::collections::HashSet::new();
 
     for (section_index, section_element) in document.select(&section_selector).enumerate() {
-        let section_id = section_element
-            .value()
-            .attr("id")
-            .and_then(|id_str| id_str.strip_prefix("section-"))
-            .and_then(|num_str| num_str.parse::<i64>().ok())
-            .unwrap_or_else(|| {
-                default_section_id += 1;
-                default_section_id
-            });
+        let section_id = extract_section_id(&section_element, course_id, section_index);
+        if !seen_section_ids.insert(section_id) {
+            continue;
+        }
 
         let section_name = section_element
-            .select(&title_selector)
-            .next()
-            .map(|t| t.text().collect::<Vec<_>>().join(" ").trim().to_string())
+            .value()
+            .attr("data-sectionname")
+            .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
+            .or_else(|| {
+                section_element
+                    .select(&title_selector)
+                    .next()
+                    .map(|t| t.text().collect::<Vec<_>>().join(" ").trim().to_string())
+                    .filter(|s| !s.is_empty())
+            })
             .unwrap_or_else(|| format!("Tópico {}", section_index));
 
         let mut activities = Vec::new();
+        let mut seen_activity_ids = std::collections::HashSet::new();
 
-        for activity_element in section_element.select(&activity_selector) {
+        for activity_element in section_element.select(&li_activity_selector) {
             if let Some(activity) = parse_activity_element(&activity_element, section_id) {
-                activities.push(activity);
+                if seen_activity_ids.insert(activity.id) {
+                    activities.push(activity);
+                }
+            }
+        }
+
+        if activities.is_empty() {
+            for activity_element in section_element.select(&fallback_activity_selector) {
+                if let Some(activity) = parse_activity_element(&activity_element, section_id) {
+                    if seen_activity_ids.insert(activity.id) {
+                        activities.push(activity);
+                    }
+                }
             }
         }
 
@@ -88,18 +127,22 @@ pub fn parse_course_sections(html: &str, course_id: i64) -> Vec<Section> {
         });
     }
 
-    // Fallback: If no structured sections were found, parse activities globally into a single general section
     if sections.is_empty() {
+        let fallback_section_id = course_id * 10000;
         let mut general_activities = Vec::new();
-        for activity_element in document.select(&activity_selector) {
-            if let Some(activity) = parse_activity_element(&activity_element, course_id * 1000) {
-                general_activities.push(activity);
+        let mut seen_activity_ids = std::collections::HashSet::new();
+
+        for activity_element in document.select(&li_activity_selector) {
+            if let Some(activity) = parse_activity_element(&activity_element, fallback_section_id) {
+                if seen_activity_ids.insert(activity.id) {
+                    general_activities.push(activity);
+                }
             }
         }
 
         if !general_activities.is_empty() {
             sections.push(Section {
-                id: course_id * 1000,
+                id: fallback_section_id,
                 course_id,
                 name: "Geral".to_string(),
                 summary: None,
@@ -111,9 +154,34 @@ pub fn parse_course_sections(html: &str, course_id: i64) -> Vec<Section> {
     sections
 }
 
+fn extract_section_id(
+    section_element: &scraper::ElementRef,
+    course_id: i64,
+    section_index: usize,
+) -> i64 {
+    if let Some(db_id) = section_element
+        .value()
+        .attr("data-id")
+        .and_then(|s| s.parse::<i64>().ok())
+    {
+        return db_id;
+    }
+
+    let relative_num = section_element
+        .value()
+        .attr("id")
+        .and_then(|id_str| id_str.strip_prefix("section-"))
+        .and_then(|num_str| num_str.parse::<i64>().ok())
+        .unwrap_or((section_index as i64) + 1);
+
+    course_id * 10000 + relative_num
+}
+
 fn parse_activity_element(element: &scraper::ElementRef, section_id: i64) -> Option<Activity> {
     let link_selector = Selector::parse("a[href*='/mod/']").unwrap();
-    let title_selector = Selector::parse(".instancename, .activityname, a").unwrap();
+    let data_name_selector = Selector::parse("[data-activityname]").unwrap();
+    let title_selector = Selector::parse(".instancename, .activityname").unwrap();
+    let accesshide_selector = Selector::parse(".accesshide").unwrap();
 
     let link_element = element.select(&link_selector).next()?;
     let href = link_element.value().attr("href")?;
@@ -123,20 +191,44 @@ fn parse_activity_element(element: &scraper::ElementRef, section_id: i64) -> Opt
         .map(|mod_str| ActivityType::from_moodle_modname(&mod_str))
         .unwrap_or(ActivityType::Other("unknown".to_string()));
 
-    let title = element
-        .select(&title_selector)
-        .next()
-        .map(|t| t.text().collect::<Vec<_>>().join(" ").trim().to_string())
+    let clean_title = element
+        .value()
+        .attr("data-activityname")
+        .or_else(|| {
+            element
+                .select(&data_name_selector)
+                .next()
+                .and_then(|el| el.value().attr("data-activityname"))
+        })
+        .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| format!("Atividade {}", activity_id));
+        .unwrap_or_else(|| {
+            let title_el = element
+                .select(&title_selector)
+                .next()
+                .unwrap_or(link_element);
+            let raw_text = title_el.text().collect::<Vec<_>>().join(" ");
+            let hidden_text = title_el
+                .select(&accesshide_selector)
+                .map(|h| h.text().collect::<Vec<_>>().join(" "))
+                .collect::<Vec<_>>()
+                .join(" ");
 
-    // Clean Moodle accessibility suffix text like " Tarefa" or " Arquivo"
-    let clean_title = title
-        .split('\n')
-        .next()
-        .unwrap_or(&title)
-        .trim()
-        .to_string();
+            let stripped = if !hidden_text.trim().is_empty() {
+                raw_text
+                    .trim_end()
+                    .strip_suffix(hidden_text.trim())
+                    .unwrap_or(&raw_text)
+            } else {
+                &raw_text
+            };
+            let trimmed = stripped.split('\n').next().unwrap_or(stripped).trim();
+            if trimmed.is_empty() {
+                format!("Atividade {}", activity_id)
+            } else {
+                trimmed.to_string()
+            }
+        });
 
     Some(Activity {
         id: activity_id,

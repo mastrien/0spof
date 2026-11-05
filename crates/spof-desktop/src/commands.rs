@@ -46,10 +46,21 @@ pub fn handle_get_courses(database: &Database) -> Result<Vec<CourseDto>, String>
     let courses = database.get_courses().map_err(|e| e.to_string())?;
     Ok(courses
         .into_iter()
-        .map(|course| CourseDto {
-            id: course.id,
-            fullname: course.fullname,
-            shortname: course.shortname,
+        .map(|course| {
+            let sections = database
+                .get_sections_by_course(course.id)
+                .unwrap_or_default();
+            let activities_count = sections
+                .iter()
+                .map(|section| section.activities.len())
+                .sum();
+            CourseDto {
+                id: course.id,
+                fullname: course.fullname,
+                shortname: course.shortname,
+                sections_count: sections.len(),
+                activities_count,
+            }
         })
         .collect())
 }
@@ -124,12 +135,13 @@ pub fn handle_save_session(
     }
 
     let moodle_session = MoodleSession::new(trimmed_url.to_string(), trimmed_cookie.to_string());
+    let clean_base_url = moodle_session.base_url.clone();
     let mut session_guard = state.session.lock().unwrap();
     *session_guard = Some(moodle_session);
 
     Ok(SessionInfoDto {
         is_authenticated: true,
-        base_url: Some(trimmed_url.to_string()),
+        base_url: Some(clean_base_url),
     })
 }
 

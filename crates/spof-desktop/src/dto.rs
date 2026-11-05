@@ -12,6 +12,8 @@ pub struct CourseDto {
     pub id: i64,
     pub fullname: String,
     pub shortname: String,
+    pub sections_count: usize,
+    pub activities_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

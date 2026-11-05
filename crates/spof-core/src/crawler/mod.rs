@@ -1,3 +1,4 @@
+pub mod ajax;
 pub mod parser;
 pub mod sync;
 
