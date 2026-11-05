@@ -170,22 +170,20 @@ impl CourseCrawler {
                     if discovered_sesskey.is_none() {
                         discovered_sesskey = extract_sesskey(&html);
                     }
-                    let mut found = parser::parse_dashboard_courses(&html);
-                    all_courses.append(&mut found);
-                }
-                if !all_courses.is_empty() || discovered_sesskey.is_some() {
-                    break;
+                    let mut courses = parser::parse_dashboard_courses(&html);
+                    all_courses.append(&mut courses);
                 }
             }
         }
 
         if is_session_rejected(redirected_to_login, successful_responses, all_courses.len()) {
             return Err(SpofError::Authentication(
-                "Sessão inválida ou expirada: o Moodle redirecionou a requisição para a tela de login. Por favor, atualize o cookie MoodleSession.".to_string(),
+                "Sessão do Moodle rejeitada ou expirada".to_string(),
             ));
         }
 
-        if let Some(ref sesskey) = discovered_sesskey {
+        // Tenta buscar via AJAX do Moodle 4.x se tiver sesskey
+        if let Some(sesskey) = discovered_sesskey {
             let ajax_url = format!(
                 "{}/lib/ajax/service.php?sesskey={}&info=core_course_get_enrolled_courses_by_timeline_classification",
                 self.client.base_url(),
@@ -253,10 +251,24 @@ impl CourseCrawler {
                 }
             }
 
-            // Auto-cache resources (PDF, image, HTML) while skipping video unless requested
+            // Auto-cache resources & resolve direct external links
             if let Ok(sections) = self.db.get_sections_by_course(course.id) {
                 for section in sections {
                     for act in section.activities {
+                        if act.activity_type == ActivityType::Url {
+                            if let Some(ref act_url) = act.url {
+                                if act_url.contains("/mod/url/view.php") {
+                                    if let Ok(Some(direct_url)) =
+                                        resource::resolve_external_url(&http, session, act_url)
+                                            .await
+                                    {
+                                        let _ = self.db.update_activity_url(act.id, &direct_url);
+                                    }
+                                }
+                            }
+                            continue;
+                        }
+
                         let should_auto_cache = matches!(
                             act.activity_type,
                             ActivityType::Resource | ActivityType::Folder

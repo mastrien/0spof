@@ -207,6 +207,15 @@ impl Database {
         Ok(())
     }
 
+    pub fn update_activity_url(&self, activity_id: i64, url: &str) -> Result<()> {
+        let connection = self.conn.lock().unwrap();
+        connection.execute(
+            "UPDATE activities SET url = ?2 WHERE id = ?1",
+            params![activity_id, url],
+        )?;
+        Ok(())
+    }
+
     pub fn get_activity(&self, activity_id: i64) -> Result<Option<Activity>> {
         let connection = self.conn.lock().unwrap();
         let mut statement = connection.prepare(

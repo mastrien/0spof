@@ -108,6 +108,14 @@ fn test_sections_and_activities() {
         Some("application/pdf")
     );
 
+    db.update_activity_url(1001, "https://meet.google.com/xyz-1234")
+        .unwrap();
+    let fetched_act1 = db.get_activity(1001).unwrap().unwrap();
+    assert_eq!(
+        fetched_act1.url.as_deref(),
+        Some("https://meet.google.com/xyz-1234")
+    );
+
     let acts = db.get_activities_by_section(100).unwrap();
     assert_eq!(acts.len(), 2);
 
