@@ -45,6 +45,12 @@ pub struct Activity {
     pub title: String,
     pub activity_type: ActivityType,
     pub url: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub local_file_path: Option<String>,
+    #[serde(default)]
+    pub content_mime: Option<String>,
     pub due_date: Option<DateTime<Utc>>,
     pub is_submitted: bool,
 }

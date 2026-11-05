@@ -1,6 +1,6 @@
 use crate::dto::{
-    CourseDto, EnqueueResultDto, OutboxItemDto, ProofDto, SessionInfoDto, SyncSummaryDto,
-    SystemStatusDto,
+    ActivityDto, CourseDto, EnqueueResultDto, OutboxItemDto, ProofDto, SectionDto, SessionInfoDto,
+    SyncSummaryDto, SystemStatusDto,
 };
 use spof_core::auth::{MoodleClient, MoodleSession};
 use spof_core::crawler::CourseCrawler;
@@ -23,8 +23,6 @@ impl AppState {
         }
     }
 }
-
-// Logic handlers decoupled from Tauri macros for direct testing and IPC execution
 
 pub fn handle_get_system_status(database: &Database) -> Result<SystemStatusDto, String> {
     let courses = database.get_courses().map_err(|e| e.to_string())?;
@@ -61,6 +59,40 @@ pub fn handle_get_courses(database: &Database) -> Result<Vec<CourseDto>, String>
                 sections_count: sections.len(),
                 activities_count,
             }
+        })
+        .collect())
+}
+
+pub fn handle_get_course_details(
+    database: &Database,
+    course_id: i64,
+) -> Result<Vec<SectionDto>, String> {
+    let sections = database
+        .get_sections_by_course(course_id)
+        .map_err(|e| e.to_string())?;
+    Ok(sections
+        .into_iter()
+        .map(|sec| SectionDto {
+            id: sec.id,
+            course_id: sec.course_id,
+            name: sec.name,
+            summary: sec.summary,
+            activities: sec
+                .activities
+                .into_iter()
+                .map(|act| ActivityDto {
+                    id: act.id,
+                    section_id: act.section_id,
+                    title: act.title,
+                    activity_type: act.activity_type.as_str().to_string(),
+                    url: act.url,
+                    description: act.description,
+                    local_file_path: act.local_file_path,
+                    content_mime: act.content_mime,
+                    due_date: act.due_date.map(|dt| dt.to_rfc3339()),
+                    is_submitted: act.is_submitted,
+                })
+                .collect(),
         })
         .collect())
 }
@@ -183,65 +215,58 @@ pub async fn handle_sync_moodle(state: &AppState) -> Result<SyncSummaryDto, Stri
         courses_synced: sync_result.courses_synced,
         sections_synced: sync_result.sections_synced,
         activities_synced: sync_result.activities_synced,
+        resources_cached: sync_result.resources_cached,
     })
 }
 
-// Tauri IPC Command Bindings
-
-#[tauri::command]
-pub fn get_system_status(
-    state: tauri::State<'_, Arc<AppState>>,
-) -> Result<SystemStatusDto, String> {
-    handle_get_system_status(&state.db)
+pub async fn handle_download_activity_media(
+    state: &AppState,
+    activity_id: i64,
+    allow_video: bool,
+) -> Result<String, String> {
+    let session_opt = {
+        let guard = state.session.lock().unwrap();
+        guard.clone()
+    };
+    let session =
+        session_opt.ok_or_else(|| "Sessão Moodle não configurada para download.".to_string())?;
+    let client = MoodleClient::new(session.base_url.clone())
+        .map_err(|e| e.to_string())?
+        .with_session(session);
+    let crawler = CourseCrawler::new(state.db.clone(), client);
+    crawler
+        .download_activity(activity_id, allow_video)
+        .await
+        .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub fn get_courses(state: tauri::State<'_, Arc<AppState>>) -> Result<Vec<CourseDto>, String> {
-    handle_get_courses(&state.db)
-}
-
-#[tauri::command]
-pub fn get_outbox_items(
-    state: tauri::State<'_, Arc<AppState>>,
-) -> Result<Vec<OutboxItemDto>, String> {
-    handle_get_outbox_items(&state.db)
-}
-
-#[tauri::command]
-pub async fn enqueue_submission(
-    state: tauri::State<'_, Arc<AppState>>,
-    assign_id: i64,
-    file_path: String,
-    fetch_tsa: bool,
-) -> Result<EnqueueResultDto, String> {
-    handle_enqueue_submission(&state.db, assign_id, &file_path, fetch_tsa).await
-}
-
-#[tauri::command]
-pub fn get_submission_proof(
-    state: tauri::State<'_, Arc<AppState>>,
-    outbox_id: i64,
-) -> Result<ProofDto, String> {
-    handle_get_submission_proof(&state.db, outbox_id)
-}
-
-#[tauri::command]
-pub fn save_session(
-    state: tauri::State<'_, Arc<AppState>>,
-    base_url: String,
-    session_cookie: String,
-) -> Result<SessionInfoDto, String> {
-    handle_save_session(&state, base_url, session_cookie)
-}
-
-#[tauri::command]
-pub fn get_session_info(state: tauri::State<'_, Arc<AppState>>) -> SessionInfoDto {
-    handle_get_session_info(&state)
-}
-
-#[tauri::command]
-pub async fn sync_moodle(state: tauri::State<'_, Arc<AppState>>) -> Result<SyncSummaryDto, String> {
-    handle_sync_moodle(&state).await
+pub fn handle_open_target(target: &str) -> Result<(), String> {
+    let trimmed = target.trim();
+    if trimmed.is_empty() {
+        return Err("Caminho ou URL vazio".to_string());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", trimmed])
+            .spawn()
+            .map_err(|e| format!("Erro ao abrir destino: {}", e))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(trimmed)
+            .spawn()
+            .map_err(|e| format!("Erro ao abrir destino: {}", e))?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(trimmed)
+            .spawn()
+            .map_err(|e| format!("Erro ao abrir destino: {}", e))?;
+    }
+    Ok(())
 }
 
 #[path = "commands_tests.rs"]

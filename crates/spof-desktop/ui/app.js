@@ -11,40 +11,34 @@ function getInvoke() {
 const invoke = async (cmd, args = {}) => {
   const invoker = getInvoke();
   if (!invoker) {
-    const errorMsg = "Tauri IPC bridge indisponível. A aplicação precisa rodar dentro da janela do 0spof.";
-    console.error(errorMsg, cmd, args);
-    throw new Error(errorMsg);
+    throw new Error("Tauri IPC bridge indisponível. Rode dentro da janela do 0spof.");
   }
   return await invoker(cmd, args);
 };
 
-// Gerenciamento de Abas
+// Navegação de Abas
 const navItems = document.querySelectorAll(".nav-item");
 const tabPanes = document.querySelectorAll(".tab-pane");
 const tabTitle = document.getElementById("tab-title");
 
+function switchTab(target) {
+  navItems.forEach((b) => b.classList.toggle("active", b.getAttribute("data-tab") === target));
+  tabPanes.forEach((p) => p.classList.toggle("active", p.id === `tab-${target}`));
+
+  const titles = {
+    dashboard: "Painel de Resiliência",
+    courses: "Disciplinas e Prazos Salvos",
+    outbox: "Fila de Submissões Pendentes",
+    "queue-modal": "Nova Submissão Offline",
+    settings: "Conexão Institucional Moodle / SUAP",
+  };
+  tabTitle.innerText = titles[target] || "0spof";
+}
+
 navItems.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const target = btn.getAttribute("data-tab");
-    navItems.forEach((b) => b.classList.remove("active"));
-    tabPanes.forEach((p) => p.classList.remove("active"));
-
-    btn.classList.add("active");
-    const pane = document.getElementById(`tab-${target}`);
-    if (pane) pane.classList.add("active");
-
-    const titles = {
-      dashboard: "Painel de Resiliência",
-      courses: "Disciplinas e Prazos Salvos",
-      outbox: "Fila de Submissões Pendentes",
-      "queue-modal": "Nova Submissão Offline",
-      settings: "Conexão Institucional Moodle / SUAP",
-    };
-    tabTitle.innerText = titles[target] || "0spof";
-  });
+  btn.addEventListener("click", () => switchTab(btn.getAttribute("data-tab")));
 });
 
-// Atualização de Métricas e Dados
 async function refreshData() {
   try {
     const status = await invoke("get_system_status");
@@ -76,30 +70,175 @@ async function refreshData() {
   }
 }
 
+let cachedCourses = [];
+
 async function loadCourses() {
   const container = document.getElementById("courses-list");
   try {
-    const courses = await invoke("get_courses");
-    if (!courses || courses.length === 0) {
-      container.innerHTML = "<p>Nenhum curso cacheado localmente ainda.</p>";
+    cachedCourses = await invoke("get_courses");
+    if (!cachedCourses || cachedCourses.length === 0) {
+      container.innerHTML = "<p>Nenhum curso cacheado localmente ainda. Clique em 'Sincronizar Moodle'.</p>";
       return;
     }
-    container.innerHTML = courses
+    container.innerHTML = cachedCourses
       .map(
         (c) => `
-        <div class="list-item">
+        <div class="list-item course-row" data-course-id="${c.id}" style="cursor:pointer;">
           <div>
             <strong>${c.fullname}</strong><br>
             <small>ID #${c.id} • ${c.sections_count || 0} seções • ${c.activities_count || 0} atividades</small>
           </div>
+          <button class="btn btn-secondary btn-open-course" data-course-id="${c.id}">Abrir disciplina →</button>
         </div>
       `
       )
       .join("");
+
+    container.querySelectorAll(".course-row").forEach((row) => {
+      row.addEventListener("click", () => {
+        const courseId = parseInt(row.getAttribute("data-course-id"), 10);
+        openCourseDetail(courseId);
+      });
+    });
   } catch (err) {
     container.innerHTML = `<p class="error">Erro ao listar cursos: ${err}</p>`;
   }
 }
+
+function getActivityBadge(actType) {
+  const map = {
+    assign: "📝 Tarefa",
+    resource: "📄 Arquivo/Slide",
+    folder: "📁 Pasta",
+    url: "🔗 Link Externo",
+    forum: "💬 Fórum",
+    quiz: "✅ Questionário",
+    page: "📃 Página",
+  };
+  return map[actType] || `📌 ${actType}`;
+}
+
+async function openCourseDetail(courseId) {
+  const course = cachedCourses.find((c) => c.id === courseId);
+  document.getElementById("courses-master-view").style.display = "none";
+  document.getElementById("course-detail-view").style.display = "block";
+  document.getElementById("course-detail-short").innerText = course ? `CURSO #${course.id} • ${course.shortname}` : `CURSO #${courseId}`;
+  document.getElementById("course-detail-title").innerText = course ? course.fullname : `Disciplina #${courseId}`;
+
+  const sectionsContainer = document.getElementById("course-sections-list");
+  sectionsContainer.innerHTML = "<p>Carregando seções e atividades…</p>";
+
+  try {
+    const sections = await invoke("get_course_details", { courseId });
+    if (!sections || sections.length === 0) {
+      sectionsContainer.innerHTML = "<p>Nenhuma seção encontrada para esta disciplina.</p>";
+      return;
+    }
+
+    sectionsContainer.innerHTML = sections
+      .map((sec) => {
+        const summaryHtml = sec.summary ? `<p style="color:#6d7890;margin:4px 0 10px;font-size:13px;">${sec.summary}</p>` : "";
+        const activitiesHtml =
+          !sec.activities || sec.activities.length === 0
+            ? `<p style="color:#8994aa;font-size:12px;">Nenhuma atividade nesta seção.</p>`
+            : sec.activities
+                .map((act) => {
+                  const descHtml = act.description
+                    ? `<div style="margin-top:6px;padding:8px 10px;background:#f4f6fb;border-radius:7px;font-size:12px;color:#344a78;">${act.description}</div>`
+                    : "";
+                  const hasLocalFile = act.local_file_path && act.local_file_path.length > 0;
+                  const isVideo = (act.content_mime && act.content_mime.startsWith("video/")) || (act.url && /\.(mp4|webm|mkv)(\?|$)/i.test(act.url));
+
+                  let actionsHtml = "";
+                  if (act.activity_type === "assign") {
+                    actionsHtml += `<button class="btn btn-primary btn-queue-assign" data-assign-id="${act.id}" style="padding:6px 10px;font-size:12px;">⌁ Enfileirar entrega (#${act.id})</button>`;
+                  }
+                  if (hasLocalFile) {
+                    actionsHtml += `<button class="btn btn-secondary btn-open-local" data-target="${act.local_file_path}" style="padding:6px 10px;font-size:12px;">📂 Abrir cópia offline (${act.content_mime || "arquivo"})</button>`;
+                  } else if (isVideo) {
+                    actionsHtml += `<button class="btn btn-secondary btn-download-media" data-act-id="${act.id}" data-video="true" style="padding:6px 10px;font-size:12px;">🎬 Baixar vídeo offline</button>`;
+                  } else if (act.activity_type === "resource" || act.activity_type === "page") {
+                    actionsHtml += `<button class="btn btn-secondary btn-download-media" data-act-id="${act.id}" data-video="false" style="padding:6px 10px;font-size:12px;">⬇ Baixar recurso offline</button>`;
+                  }
+                  if (act.url) {
+                    actionsHtml += `<button class="btn btn-ghost btn-open-url" data-target="${act.url}" style="padding:6px 10px;font-size:12px;">🌐 Abrir no Moodle</button>`;
+                  }
+
+                  return `
+                    <div class="list-item" style="align-items:flex-start;flex-direction:column;gap:8px;margin-top:8px;">
+                      <div style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                        <div>
+                          <span class="status-badge pending" style="margin-right:6px;">${getActivityBadge(act.activity_type)}</span>
+                          <strong>${act.title}</strong> <small>(ID #${act.id})</small>
+                        </div>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;">${actionsHtml}</div>
+                      </div>
+                      ${descHtml}
+                    </div>
+                  `;
+                })
+                .join("");
+
+        return `
+          <div style="border:1px solid #e8ebf2;border-radius:12px;padding:16px 18px;background:#fff;margin-bottom:12px;">
+            <h3 style="font-size:16px;color:#18223a;margin-bottom:6px;">${sec.name}</h3>
+            ${summaryHtml}
+            <div>${activitiesHtml}</div>
+          </div>
+        `;
+      })
+      .join("");
+
+    sectionsContainer.querySelectorAll(".btn-queue-assign").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const assignId = btn.getAttribute("data-assign-id");
+        document.getElementById("assign-id").value = assignId;
+        switchTab("queue-modal");
+      });
+    });
+
+    sectionsContainer.querySelectorAll(".btn-open-local, .btn-open-url").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const target = btn.getAttribute("data-target");
+        try {
+          await invoke("open_target", { target });
+        } catch (err) {
+          alert("Erro ao abrir: " + err);
+        }
+      });
+    });
+
+    sectionsContainer.querySelectorAll(".btn-download-media").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const activityId = parseInt(btn.getAttribute("data-act-id"), 10);
+        const allowVideo = btn.getAttribute("data-video") === "true";
+        const originalText = btn.innerText;
+        btn.disabled = true;
+        btn.innerText = "⏳ Baixando...";
+        try {
+          const savedPath = await invoke("download_activity_media", { activityId, allowVideo });
+          if (savedPath) {
+            await openCourseDetail(courseId);
+          } else {
+            alert("Este recurso é um vídeo. Use o botão 'Baixar vídeo offline' para confirmar.");
+            await openCourseDetail(courseId);
+          }
+        } catch (err) {
+          alert("Erro ao baixar recurso: " + err);
+          btn.disabled = false;
+          btn.innerText = originalText;
+        }
+      });
+    });
+  } catch (err) {
+    sectionsContainer.innerHTML = `<p class="error">Erro ao carregar detalhes do curso: ${err}</p>`;
+  }
+}
+
+document.getElementById("btn-back-courses").addEventListener("click", () => {
+  document.getElementById("course-detail-view").style.display = "none";
+  document.getElementById("courses-master-view").style.display = "block";
+});
 
 async function loadOutbox() {
   const container = document.getElementById("outbox-list");
@@ -134,7 +273,6 @@ async function loadOutbox() {
   }
 }
 
-// Enfileiramento de Submissão
 const formEnqueue = document.getElementById("form-enqueue");
 const resultBox = document.getElementById("enqueue-result");
 
@@ -148,12 +286,7 @@ formEnqueue.addEventListener("submit", async (e) => {
   const checkTsa = document.getElementById("check-tsa").checked;
 
   try {
-    const res = await invoke("enqueue_submission", {
-      assignId,
-      filePath,
-      fetchTsa: checkTsa,
-    });
-
+    const res = await invoke("enqueue_submission", { assignId, filePath, fetchTsa: checkTsa });
     resultBox.className = "result-message success";
     resultBox.innerText = `Tarefa enfileirada com sucesso! ID: ${res.outbox_id} | SHA-256: ${res.file_hash}`;
     resultBox.style.display = "block";
@@ -167,7 +300,6 @@ formEnqueue.addEventListener("submit", async (e) => {
   }
 });
 
-// Configuração de Sessão Moodle
 const formSession = document.getElementById("form-session");
 const sessionResult = document.getElementById("session-result");
 
@@ -192,7 +324,6 @@ formSession.addEventListener("submit", async (e) => {
   }
 });
 
-// Sincronização Online do Moodle
 const btnSync = document.getElementById("btn-sync");
 btnSync.addEventListener("click", async () => {
   btnSync.disabled = true;
@@ -202,9 +333,11 @@ btnSync.addEventListener("click", async () => {
   try {
     const summary = await invoke("sync_moodle");
     if (summary.courses_synced === 0) {
-      alert(`Sincronização concluída, mas nenhum curso foi encontrado.\n\nVerifique:\n1. Se o cookie MoodleSession ainda é válido (reabra o Moodle no navegador e confira se não deslogou).\n2. Se o endereço base está correto (ex: https://moodle.instituicao.edu.br sem barra no final).`);
+      alert("Sincronização concluída, mas nenhum curso foi encontrado. Verifique seu cookie MoodleSession.");
     } else {
-      alert(`Sincronização concluída com sucesso!\nCursos atualizados: ${summary.courses_synced}\nSeções indexadas: ${summary.sections_synced}\nAtividades catalogadas: ${summary.activities_synced}`);
+      alert(
+        `Sincronização concluída com sucesso!\nCursos atualizados: ${summary.courses_synced}\nSeções indexadas: ${summary.sections_synced}\nAtividades catalogadas: ${summary.activities_synced}\nArquivos/PDFs cacheados offline: ${summary.resources_cached || 0}`
+      );
     }
     await refreshData();
   } catch (err) {
@@ -215,7 +348,6 @@ btnSync.addEventListener("click", async () => {
   }
 });
 
-// Modal de Comprovante Forense
 const proofModal = document.getElementById("proof-modal");
 const proofText = document.getElementById("proof-text");
 const btnCloseModal = document.getElementById("btn-close-modal");
@@ -238,6 +370,4 @@ btnCopyProof.addEventListener("click", () => {
 });
 
 document.getElementById("btn-refresh").addEventListener("click", refreshData);
-
-// Inicialização
 refreshData();

@@ -17,6 +17,29 @@ pub struct CourseDto {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ActivityDto {
+    pub id: i64,
+    pub section_id: i64,
+    pub title: String,
+    pub activity_type: String,
+    pub url: Option<String>,
+    pub description: Option<String>,
+    pub local_file_path: Option<String>,
+    pub content_mime: Option<String>,
+    pub due_date: Option<String>,
+    pub is_submitted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SectionDto {
+    pub id: i64,
+    pub course_id: i64,
+    pub name: String,
+    pub summary: Option<String>,
+    pub activities: Vec<ActivityDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OutboxItemDto {
     pub id: i64,
     pub assign_id: i64,
@@ -53,4 +76,5 @@ pub struct SyncSummaryDto {
     pub courses_synced: usize,
     pub sections_synced: usize,
     pub activities_synced: usize,
+    pub resources_cached: usize,
 }

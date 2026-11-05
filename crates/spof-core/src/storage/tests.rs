@@ -74,6 +74,9 @@ fn test_sections_and_activities() {
         title: "Lista 1 - Limites".to_string(),
         activity_type: ActivityType::Assign,
         url: Some("https://moodle/assign/1".to_string()),
+        description: Some("Resolver exercícios 1 a 10".to_string()),
+        local_file_path: None,
+        content_mime: None,
         due_date: Some(Utc::now()),
         is_submitted: false,
     };
@@ -83,6 +86,9 @@ fn test_sections_and_activities() {
         title: "Apostila de Limites".to_string(),
         activity_type: ActivityType::Resource,
         url: None,
+        description: None,
+        local_file_path: None,
+        content_mime: None,
         due_date: None,
         is_submitted: true,
     };
@@ -90,8 +96,24 @@ fn test_sections_and_activities() {
     db.upsert_activity(&activity1).unwrap();
     db.upsert_activity(&activity2).unwrap();
 
+    db.update_activity_local_file(1002, "C:/cache/apostila.pdf", "application/pdf")
+        .unwrap();
+    let fetched_act2 = db.get_activity(1002).unwrap().unwrap();
+    assert_eq!(
+        fetched_act2.local_file_path.as_deref(),
+        Some("C:/cache/apostila.pdf")
+    );
+    assert_eq!(
+        fetched_act2.content_mime.as_deref(),
+        Some("application/pdf")
+    );
+
     let acts = db.get_activities_by_section(100).unwrap();
     assert_eq!(acts.len(), 2);
+
+    let sections = db.get_sections_by_course(1).unwrap();
+    assert_eq!(sections.len(), 1);
+    assert_eq!(sections[0].activities.len(), 2);
 
     let upcoming = db.get_upcoming_deadlines().unwrap();
     assert_eq!(upcoming.len(), 1);

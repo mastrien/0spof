@@ -71,6 +71,7 @@ pub fn parse_course_sections(html: &str, course_id: i64) -> Vec<Section> {
     let document = Html::parse_document(html);
     let section_selector = Selector::parse("li.section, div.section, .course-section").unwrap();
     let title_selector = Selector::parse(".sectionname, .section-title, h3, h4").unwrap();
+    let section_summary_selector = Selector::parse("[data-for='sectioninfo'], .summary").unwrap();
     let li_activity_selector = Selector::parse("li.activity").unwrap();
     let fallback_activity_selector = Selector::parse(".activity-item").unwrap();
 
@@ -97,6 +98,19 @@ pub fn parse_course_sections(html: &str, course_id: i64) -> Vec<Section> {
             })
             .unwrap_or_else(|| format!("Tópico {}", section_index));
 
+        let section_summary = section_element
+            .select(&section_summary_selector)
+            .next()
+            .map(|el| {
+                el.text()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .filter(|s| !s.is_empty());
+
         let mut activities = Vec::new();
         let mut seen_activity_ids = std::collections::HashSet::new();
 
@@ -122,7 +136,7 @@ pub fn parse_course_sections(html: &str, course_id: i64) -> Vec<Section> {
             id: section_id,
             course_id,
             name: section_name,
-            summary: None,
+            summary: section_summary,
             activities,
         });
     }
@@ -182,6 +196,8 @@ fn parse_activity_element(element: &scraper::ElementRef, section_id: i64) -> Opt
     let data_name_selector = Selector::parse("[data-activityname]").unwrap();
     let title_selector = Selector::parse(".instancename, .activityname").unwrap();
     let accesshide_selector = Selector::parse(".accesshide").unwrap();
+    let description_selector =
+        Selector::parse(".activity-description, .contentafterlink, .activity-altcontent").unwrap();
 
     let link_element = element.select(&link_selector).next()?;
     let href = link_element.value().attr("href")?;
@@ -230,12 +246,29 @@ fn parse_activity_element(element: &scraper::ElementRef, section_id: i64) -> Opt
             }
         });
 
+    let description = element
+        .select(&description_selector)
+        .next()
+        .map(|desc_el| {
+            desc_el
+                .text()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .filter(|s| !s.is_empty());
+
     Some(Activity {
         id: activity_id,
         section_id,
         title: clean_title,
         activity_type,
         url: Some(href.to_string()),
+        description,
+        local_file_path: None,
+        content_mime: None,
         due_date: None,
         is_submitted: false,
     })

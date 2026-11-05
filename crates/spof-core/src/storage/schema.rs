@@ -1,7 +1,7 @@
 use crate::error::Result;
 use rusqlite::Connection;
 
-/// Initializes the SQLite database schema including foreign keys, tables, and indices.
+/// Initializes the SQLite database schema including foreign keys, tables, migrations, and indices.
 pub(crate) fn initialize_schema(connection: &Connection) -> Result<()> {
     connection.execute_batch(
         r#"
@@ -28,6 +28,9 @@ pub(crate) fn initialize_schema(connection: &Connection) -> Result<()> {
             title TEXT NOT NULL,
             activity_type TEXT NOT NULL,
             url TEXT,
+            description TEXT,
+            local_file_path TEXT,
+            content_mime TEXT,
             due_date TEXT,
             is_submitted INTEGER NOT NULL DEFAULT 0
         );
@@ -51,5 +54,14 @@ pub(crate) fn initialize_schema(connection: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox_items(status);
         "#,
     )?;
+
+    // Idempotent column migrations for existing databases
+    let _ = connection.execute("ALTER TABLE activities ADD COLUMN description TEXT;", []);
+    let _ = connection.execute(
+        "ALTER TABLE activities ADD COLUMN local_file_path TEXT;",
+        [],
+    );
+    let _ = connection.execute("ALTER TABLE activities ADD COLUMN content_mime TEXT;", []);
+
     Ok(())
 }
