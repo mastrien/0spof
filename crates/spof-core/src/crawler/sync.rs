@@ -1,27 +1,61 @@
 use crate::auth::{session::parser::extract_sesskey, MoodleClient};
-use crate::crawler::parser;
+use crate::crawler::{parser, resource};
 use crate::error::{Result, SpofError};
+use crate::models::ActivityType;
 use crate::storage::Database;
 use reqwest::header::{CONTENT_TYPE, COOKIE};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct SyncSummary {
     pub courses_synced: usize,
     pub sections_synced: usize,
     pub activities_synced: usize,
+    #[serde(default)]
+    pub resources_cached: usize,
 }
 
-/// Orquestrador de raspagem e sincronização offline de cursos e atividades.
+/// A sessão é considerada expirada quando alguma página autenticada (`/my/`) redirecionou
+/// para o login e nenhum curso foi encontrado — a página raiz pública não conta como sucesso.
+pub(crate) fn is_session_rejected(
+    redirected_to_login: bool,
+    successful_responses: usize,
+    courses_found: usize,
+) -> bool {
+    redirected_to_login && (successful_responses == 0 || courses_found == 0)
+}
+
+fn default_cache_dir() -> PathBuf {
+    if let Ok(custom) = std::env::var("SPOF_CACHE_DIR") {
+        return PathBuf::from(custom);
+    }
+    if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
+        return PathBuf::from(local_appdata).join("0spof").join("resources");
+    }
+    PathBuf::from("0spof_cache")
+}
+
+/// Orquestrador de raspagem e sincronização offline de cursos, atividades e recursos.
 pub struct CourseCrawler {
     db: Database,
     client: MoodleClient,
+    cache_dir: PathBuf,
 }
 
 impl CourseCrawler {
     pub fn new(db: Database, client: MoodleClient) -> Self {
-        Self { db, client }
+        Self {
+            db,
+            client,
+            cache_dir: default_cache_dir(),
+        }
+    }
+
+    pub fn with_cache_dir(mut self, cache_dir: PathBuf) -> Self {
+        self.cache_dir = cache_dir;
+        self
     }
 
     /// Processa o HTML de um Dashboard diretamente e persiste os cursos identificados no banco.
@@ -58,7 +92,46 @@ impl CourseCrawler {
         Ok((sections.len(), total_acts))
     }
 
-    /// Executa a sincronização completa varrendo o dashboard (AJAX Moodle 4.x + HTML fallback) e todas as disciplinas online.
+    /// Faz o download sob demanda (incluindo vídeos se `allow_video = true`) de uma atividade específica.
+    pub async fn download_activity(&self, activity_id: i64, allow_video: bool) -> Result<String> {
+        let session = self.client.session().ok_or_else(|| {
+            SpofError::Authentication("Sessão ausente para download de recurso".to_string())
+        })?;
+        let activity = self.db.get_activity(activity_id)?.ok_or_else(|| {
+            SpofError::Validation(format!("Atividade #{} não encontrada", activity_id))
+        })?;
+        let url = activity.url.as_deref().ok_or_else(|| {
+            SpofError::Validation("Atividade não possui URL associada".to_string())
+        })?;
+
+        let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::limited(5))
+            .build()
+            .map_err(|e| SpofError::Network(format!("Falha ao construir cliente HTTP: {}", e)))?;
+
+        if let Some((path, mime)) = resource::download_activity_resource(
+            &http,
+            session,
+            activity.id,
+            &activity.title,
+            url,
+            &self.cache_dir,
+            allow_video,
+        )
+        .await?
+        {
+            let path_str = path.to_string_lossy().to_string();
+            self.db
+                .update_activity_local_file(activity.id, &path_str, &mime)?;
+            Ok(path_str)
+        } else {
+            Err(SpofError::Validation(
+                "Não foi possível baixar o conteúdo deste recurso".to_string(),
+            ))
+        }
+    }
+
+    /// Executa a sincronização completa varrendo o dashboard, disciplinas e cacheando PDFs/imagens/HTML.
     pub async fn sync_all(&self) -> Result<SyncSummary> {
         let session = self.client.session().ok_or_else(|| {
             SpofError::Authentication("Sessão ausente para sincronização".to_string())
@@ -106,13 +179,12 @@ impl CourseCrawler {
             }
         }
 
-        if successful_responses == 0 && redirected_to_login {
+        if is_session_rejected(redirected_to_login, successful_responses, all_courses.len()) {
             return Err(SpofError::Authentication(
                 "Sessão inválida ou expirada: o Moodle redirecionou a requisição para a tela de login. Por favor, atualize o cookie MoodleSession.".to_string(),
             ));
         }
 
-        // Moodle 4.x loads enrolled courses dynamically via AJAX using sesskey
         if let Some(ref sesskey) = discovered_sesskey {
             let ajax_url = format!(
                 "{}/lib/ajax/service.php?sesskey={}&info=core_course_get_enrolled_courses_by_timeline_classification",
@@ -147,7 +219,6 @@ impl CourseCrawler {
             }
         }
 
-        // Deduplicate courses by id
         let mut seen = std::collections::HashSet::new();
         let mut courses_count = 0;
         for course in all_courses {
@@ -160,6 +231,7 @@ impl CourseCrawler {
         let courses = self.db.get_courses()?;
         let mut total_sections = 0;
         let mut total_acts = 0;
+        let mut resources_cached = 0;
 
         for course in courses {
             let course_url = format!(
@@ -180,82 +252,60 @@ impl CourseCrawler {
                     }
                 }
             }
+
+            // Auto-cache resources (PDF, image, HTML) while skipping video unless requested
+            if let Ok(sections) = self.db.get_sections_by_course(course.id) {
+                for section in sections {
+                    for act in section.activities {
+                        let should_auto_cache = matches!(
+                            act.activity_type,
+                            ActivityType::Resource | ActivityType::Folder
+                        ) || matches!(
+                            &act.activity_type,
+                            ActivityType::Other(m) if m == "page" || m == "book"
+                        );
+                        if !should_auto_cache {
+                            continue;
+                        }
+                        if let Some(ref existing_path) = act.local_file_path {
+                            if !existing_path.is_empty() && Path::new(existing_path).exists() {
+                                continue;
+                            }
+                        }
+                        if let Some(ref act_url) = act.url {
+                            if let Ok(Some((path, mime))) = resource::download_activity_resource(
+                                &http,
+                                session,
+                                act.id,
+                                &act.title,
+                                act_url,
+                                &self.cache_dir,
+                                false,
+                            )
+                            .await
+                            {
+                                let path_str = path.to_string_lossy().to_string();
+                                let _ =
+                                    self.db.update_activity_local_file(act.id, &path_str, &mime);
+                                if !path_str.is_empty() {
+                                    resources_cached += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         Ok(SyncSummary {
             courses_synced: courses_count,
             sections_synced: total_sections,
             activities_synced: total_acts,
+            resources_cached,
         })
     }
 }
 
+#[path = "sync_tests.rs"]
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_sync_from_html_flow() {
-        let db = Database::open_in_memory().unwrap();
-        let client = MoodleClient::new("https://moodle.if.edu.br".to_string()).unwrap();
-        let crawler = CourseCrawler::new(db.clone(), client);
-
-        let dashboard_html = r#"
-            <html>
-                <div class="dashboard-card">
-                    <a href="https://moodle.if.edu.br/course/view.php?id=99" class="coursename">
-                        Compiladores
-                    </a>
-                </div>
-            </html>
-        "#;
-
-        let synced_count = crawler.sync_from_dashboard_html(dashboard_html).unwrap();
-        assert_eq!(synced_count, 1);
-
-        let courses = db.get_courses().unwrap();
-        assert_eq!(courses.len(), 1);
-        assert_eq!(courses[0].id, 99);
-
-        let course_html = r#"
-            <html>
-                <li id="section-10" class="section" data-id="9910">
-                    <span class="sectionname">Módulo 1</span>
-                    <ul class="section img-text">
-                        <li id="module-1" class="activity assign">
-                            <a href="https://moodle.if.edu.br/mod/assign/view.php?id=1"><span class="instancename">Trabalho</span></a>
-                        </li>
-                    </ul>
-                </li>
-            </html>
-        "#;
-
-        let (secs, acts) = crawler.sync_from_course_html(99, course_html).unwrap();
-        assert_eq!(secs, 1);
-        assert_eq!(acts, 1);
-
-        let sections = db.get_sections_by_course(99).unwrap();
-        assert_eq!(sections.len(), 1);
-        assert_eq!(sections[0].name, "Módulo 1");
-
-        let activities = db.get_activities_by_section(9910).unwrap();
-        assert_eq!(activities.len(), 1);
-        assert_eq!(activities[0].title, "Trabalho");
-    }
-
-    #[test]
-    fn test_sync_from_ajax_json_flow() {
-        let db = Database::open_in_memory().unwrap();
-        let client = MoodleClient::new("https://moodle2.jcr.ifsp.edu.br".to_string()).unwrap();
-        let crawler = CourseCrawler::new(db.clone(), client);
-
-        let ajax_json = r#"[{"error":false,"data":{"courses":[{"id":86,"fullname":"BANCO DE DADOS 1","shortname":"JCRBDD1","summary":""}]}}]"#;
-        let synced = crawler.sync_from_ajax_courses_json(ajax_json).unwrap();
-        assert_eq!(synced, 1);
-
-        let courses = db.get_courses().unwrap();
-        assert_eq!(courses.len(), 1);
-        assert_eq!(courses[0].id, 86);
-        assert_eq!(courses[0].fullname, "BANCO DE DADOS 1");
-    }
-}
+mod tests;

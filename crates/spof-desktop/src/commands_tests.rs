@@ -1,5 +1,5 @@
 use super::*;
-use spof_core::models::Course;
+use spof_core::models::{Activity, ActivityType, Course, Section};
 use std::io::Write;
 use tempfile::NamedTempFile;
 
@@ -32,7 +32,7 @@ async fn test_desktop_handlers_flow() {
     let sess_after = handle_get_session_info(&state);
     assert!(sess_after.is_authenticated);
 
-    // 3. Add course and verify
+    // 3. Add course, section and activity, then verify
     let course = Course {
         id: 99,
         fullname: "Compiladores".to_string(),
@@ -42,9 +42,44 @@ async fn test_desktop_handlers_flow() {
     };
     db.upsert_course(&course).unwrap();
 
+    let section = Section {
+        id: 990,
+        course_id: 99,
+        name: "Análise Léxica".to_string(),
+        summary: Some("Introdução a autômatos".to_string()),
+        activities: Vec::new(),
+    };
+    db.upsert_section(&section).unwrap();
+
+    let activity = Activity {
+        id: 9901,
+        section_id: 990,
+        title: "Implementar Lexer".to_string(),
+        activity_type: ActivityType::Assign,
+        url: Some("https://moodle.ifsp.edu.br/mod/assign/view.php?id=9901".to_string()),
+        description: Some("Entregar arquivo .rs".to_string()),
+        local_file_path: None,
+        content_mime: None,
+        due_date: None,
+        is_submitted: false,
+    };
+    db.upsert_activity(&activity).unwrap();
+
     let courses = handle_get_courses(&db).unwrap();
     assert_eq!(courses.len(), 1);
     assert_eq!(courses[0].fullname, "Compiladores");
+    assert_eq!(courses[0].sections_count, 1);
+    assert_eq!(courses[0].activities_count, 1);
+
+    let details = handle_get_course_details(&db, 99).unwrap();
+    assert_eq!(details.len(), 1);
+    assert_eq!(details[0].name, "Análise Léxica");
+    assert_eq!(details[0].activities.len(), 1);
+    assert_eq!(details[0].activities[0].title, "Implementar Lexer");
+    assert_eq!(
+        details[0].activities[0].description.as_deref(),
+        Some("Entregar arquivo .rs")
+    );
 
     // 4. Enqueue submission
     let mut temp = NamedTempFile::new().unwrap();
@@ -91,4 +126,23 @@ async fn test_desktop_enqueue_missing_file_error() {
     let db = Database::open_in_memory().unwrap();
     let res = handle_enqueue_submission(&db, 1, "arquivo_que_nao_existe.xyz", false).await;
     assert!(res.is_err());
+}
+
+#[tokio::test]
+async fn test_desktop_download_without_session_error() {
+    let db = Database::open_in_memory().unwrap();
+    let state = AppState::new(db);
+    let res = handle_download_activity_media(&state, 1, true).await;
+    assert!(res.unwrap_err().contains("Sessão Moodle não configurada"));
+}
+
+#[test]
+fn test_desktop_open_target_rejects_empty() {
+    assert!(handle_open_target("   ").is_err());
+}
+
+#[test]
+fn test_desktop_course_details_empty_course() {
+    let db = Database::open_in_memory().unwrap();
+    assert!(handle_get_course_details(&db, 404).unwrap().is_empty());
 }

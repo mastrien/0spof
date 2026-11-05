@@ -2,7 +2,29 @@ use super::Database;
 use crate::error::Result;
 use crate::models::{Activity, ActivityType, Course, Section};
 use chrono::{DateTime, Utc};
-use rusqlite::params;
+use rusqlite::{params, Row};
+
+fn map_activity_row(row: &Row) -> rusqlite::Result<Activity> {
+    let type_str: String = row.get(3)?;
+    let due_date_str: Option<String> = row.get(8)?;
+    let is_submitted_flag: i64 = row.get(9)?;
+    Ok(Activity {
+        id: row.get(0)?,
+        section_id: row.get(1)?,
+        title: row.get(2)?,
+        activity_type: ActivityType::from_moodle_modname(&type_str),
+        url: row.get(4)?,
+        description: row.get(5)?,
+        local_file_path: row.get(6)?,
+        content_mime: row.get(7)?,
+        due_date: due_date_str.and_then(|timestamp_str| {
+            DateTime::parse_from_rfc3339(&timestamp_str)
+                .ok()
+                .map(|datetime| datetime.with_timezone(&Utc))
+        }),
+        is_submitted: is_submitted_flag == 1,
+    })
+}
 
 impl Database {
     // --- Courses ---
@@ -105,24 +127,32 @@ impl Database {
     }
 
     pub fn get_sections_by_course(&self, course_id: i64) -> Result<Vec<Section>> {
-        let connection = self.conn.lock().unwrap();
-        let mut statement = connection.prepare(
-            "SELECT id, course_id, name, summary FROM sections WHERE course_id = ?1 ORDER BY id ASC",
-        )?;
-        let rows = statement.query_map(params![course_id], |row| {
-            Ok(Section {
-                id: row.get(0)?,
-                course_id: row.get(1)?,
-                name: row.get(2)?,
-                summary: row.get(3)?,
-                activities: Vec::new(),
-            })
-        })?;
+        let mut section_list = {
+            let connection = self.conn.lock().unwrap();
+            let mut statement = connection.prepare(
+                "SELECT id, course_id, name, summary FROM sections WHERE course_id = ?1 ORDER BY id ASC",
+            )?;
+            let rows = statement.query_map(params![course_id], |row| {
+                Ok(Section {
+                    id: row.get(0)?,
+                    course_id: row.get(1)?,
+                    name: row.get(2)?,
+                    summary: row.get(3)?,
+                    activities: Vec::new(),
+                })
+            })?;
 
-        let mut section_list = Vec::new();
-        for section_row in rows {
-            section_list.push(section_row?);
+            let mut list = Vec::new();
+            for section_row in rows {
+                list.push(section_row?);
+            }
+            list
+        };
+
+        for section in &mut section_list {
+            section.activities = self.get_activities_by_section(section.id)?;
         }
+
         Ok(section_list)
     }
 
@@ -132,14 +162,19 @@ impl Database {
         let connection = self.conn.lock().unwrap();
         connection.execute(
             r#"
-            INSERT INTO activities (id, section_id, title, activity_type, url, due_date, is_submitted)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            INSERT INTO activities (
+                id, section_id, title, activity_type, url, description, local_file_path, content_mime, due_date, is_submitted
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
             ON CONFLICT(id) DO UPDATE SET
                 section_id = excluded.section_id,
                 title = excluded.title,
                 activity_type = excluded.activity_type,
                 url = excluded.url,
-                due_date = excluded.due_date,
+                description = COALESCE(excluded.description, activities.description),
+                local_file_path = COALESCE(excluded.local_file_path, activities.local_file_path),
+                content_mime = COALESCE(excluded.content_mime, activities.content_mime),
+                due_date = COALESCE(excluded.due_date, activities.due_date),
                 is_submitted = excluded.is_submitted;
             "#,
             params![
@@ -148,6 +183,9 @@ impl Database {
                 activity.title,
                 activity.activity_type.as_str(),
                 activity.url,
+                activity.description,
+                activity.local_file_path,
+                activity.content_mime,
                 activity.due_date.map(|timestamp| timestamp.to_rfc3339()),
                 if activity.is_submitted { 1 } else { 0 },
             ],
@@ -155,29 +193,45 @@ impl Database {
         Ok(())
     }
 
+    pub fn update_activity_local_file(
+        &self,
+        activity_id: i64,
+        local_file_path: &str,
+        content_mime: &str,
+    ) -> Result<()> {
+        let connection = self.conn.lock().unwrap();
+        connection.execute(
+            "UPDATE activities SET local_file_path = ?2, content_mime = ?3 WHERE id = ?1",
+            params![activity_id, local_file_path, content_mime],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_activity(&self, activity_id: i64) -> Result<Option<Activity>> {
+        let connection = self.conn.lock().unwrap();
+        let mut statement = connection.prepare(
+            r#"
+            SELECT id, section_id, title, activity_type, url, description, local_file_path, content_mime, due_date, is_submitted
+            FROM activities WHERE id = ?1
+            "#,
+        )?;
+        let mut rows = statement.query_map(params![activity_id], map_activity_row)?;
+        if let Some(res) = rows.next() {
+            Ok(Some(res?))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn get_activities_by_section(&self, section_id: i64) -> Result<Vec<Activity>> {
         let connection = self.conn.lock().unwrap();
         let mut statement = connection.prepare(
-            "SELECT id, section_id, title, activity_type, url, due_date, is_submitted FROM activities WHERE section_id = ?1 ORDER BY id ASC",
+            r#"
+            SELECT id, section_id, title, activity_type, url, description, local_file_path, content_mime, due_date, is_submitted
+            FROM activities WHERE section_id = ?1 ORDER BY id ASC
+            "#,
         )?;
-        let rows = statement.query_map(params![section_id], |row| {
-            let type_str: String = row.get(3)?;
-            let due_date_str: Option<String> = row.get(5)?;
-            let is_submitted_flag: i64 = row.get(6)?;
-            Ok(Activity {
-                id: row.get(0)?,
-                section_id: row.get(1)?,
-                title: row.get(2)?,
-                activity_type: ActivityType::from_moodle_modname(&type_str),
-                url: row.get(4)?,
-                due_date: due_date_str.and_then(|timestamp_str| {
-                    DateTime::parse_from_rfc3339(&timestamp_str)
-                        .ok()
-                        .map(|datetime| datetime.with_timezone(&Utc))
-                }),
-                is_submitted: is_submitted_flag == 1,
-            })
-        })?;
+        let rows = statement.query_map(params![section_id], map_activity_row)?;
 
         let mut activity_list = Vec::new();
         for activity_row in rows {
@@ -190,30 +244,13 @@ impl Database {
         let connection = self.conn.lock().unwrap();
         let mut statement = connection.prepare(
             r#"
-            SELECT id, section_id, title, activity_type, url, due_date, is_submitted 
+            SELECT id, section_id, title, activity_type, url, description, local_file_path, content_mime, due_date, is_submitted 
             FROM activities 
             WHERE due_date IS NOT NULL AND is_submitted = 0
             ORDER BY due_date ASC
             "#,
         )?;
-        let rows = statement.query_map([], |row| {
-            let type_str: String = row.get(3)?;
-            let due_date_str: Option<String> = row.get(5)?;
-            let is_submitted_flag: i64 = row.get(6)?;
-            Ok(Activity {
-                id: row.get(0)?,
-                section_id: row.get(1)?,
-                title: row.get(2)?,
-                activity_type: ActivityType::from_moodle_modname(&type_str),
-                url: row.get(4)?,
-                due_date: due_date_str.and_then(|timestamp_str| {
-                    DateTime::parse_from_rfc3339(&timestamp_str)
-                        .ok()
-                        .map(|datetime| datetime.with_timezone(&Utc))
-                }),
-                is_submitted: is_submitted_flag == 1,
-            })
-        })?;
+        let rows = statement.query_map([], map_activity_row)?;
 
         let mut deadline_list = Vec::new();
         for deadline_row in rows {

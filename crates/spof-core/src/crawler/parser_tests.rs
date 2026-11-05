@@ -146,6 +146,7 @@ fn test_parse_moodle4_course_sections_no_duplicate_activities() {
                                     <span class="instancename">Lista de Exercícios - Fundamentos de Lógica <span class="accesshide"> Tarefa</span></span>
                                 </a>
                             </div>
+                            <div class="activity-description">Resolver todos os exercícios do capítulo 1.</div>
                         </div>
                     </li>
                 </ul>
@@ -162,6 +163,10 @@ fn test_parse_moodle4_course_sections_no_duplicate_activities() {
     assert_eq!(
         sections[0].activities[0].title,
         "Lista de Exercícios - Fundamentos de Lógica"
+    );
+    assert_eq!(
+        sections[0].activities[0].description.as_deref(),
+        Some("Resolver todos os exercícios do capítulo 1.")
     );
     assert_eq!(
         sections[0].activities[0].activity_type,

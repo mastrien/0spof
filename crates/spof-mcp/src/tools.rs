@@ -69,17 +69,18 @@ pub async fn execute_tool(
             let mut result = Vec::new();
 
             for section in sections {
-                let activities = database
-                    .get_activities_by_section(section.id)
-                    .map_err(|e| e.to_string())?;
                 result.push(json!({
                     "section_id": section.id,
                     "name": section.name,
-                    "activities": activities.into_iter().map(|activity| json!({
+                    "summary": section.summary,
+                    "activities": section.activities.into_iter().map(|activity| json!({
                         "id": activity.id,
                         "title": activity.title,
                         "type": activity.activity_type.as_str(),
                         "url": activity.url,
+                        "description": activity.description,
+                        "local_file_path": activity.local_file_path,
+                        "content_mime": activity.content_mime,
                     })).collect::<Vec<_>>()
                 }));
             }

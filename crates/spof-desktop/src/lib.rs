@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod dto;
+pub mod ipc;
 
 pub use commands::AppState;
 use spof_core::storage::Database;
@@ -73,14 +74,17 @@ pub fn run() {
     tauri::Builder::default()
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
-            commands::get_system_status,
-            commands::get_courses,
-            commands::get_outbox_items,
-            commands::enqueue_submission,
-            commands::get_submission_proof,
-            commands::save_session,
-            commands::get_session_info,
-            commands::sync_moodle,
+            ipc::get_system_status,
+            ipc::get_courses,
+            ipc::get_course_details,
+            ipc::get_outbox_items,
+            ipc::enqueue_submission,
+            ipc::get_submission_proof,
+            ipc::save_session,
+            ipc::get_session_info,
+            ipc::sync_moodle,
+            ipc::download_activity_media,
+            ipc::open_target,
         ])
         .run(tauri::generate_context!())
         .expect("error while running 0spof desktop application");
