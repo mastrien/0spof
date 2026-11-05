@@ -1,3 +1,4 @@
+pub mod auth_window;
 pub mod commands;
 pub mod dto;
 pub mod ipc;
@@ -85,6 +86,7 @@ pub fn run() {
             ipc::sync_moodle,
             ipc::download_activity_media,
             ipc::open_target,
+            ipc::open_moodle_login_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running 0spof desktop application");

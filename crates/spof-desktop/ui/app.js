@@ -438,5 +438,45 @@ btnCopyProof.addEventListener("click", () => {
   alert("Comprovante copiado para a área de transferência!");
 });
 
+// Login Automático Nativo via Webview
+const btnAutoLogin = document.getElementById("btn-auto-login");
+const autoLoginSpinner = document.getElementById("auto-login-spinner");
+
+if (btnAutoLogin) {
+  btnAutoLogin.addEventListener("click", async () => {
+    const urlInput = document.getElementById("moodle-url");
+    const baseUrl = (urlInput && urlInput.value.trim()) ? urlInput.value.trim() : "https://moodle2.jcr.ifsp.edu.br";
+    btnAutoLogin.disabled = true;
+    if (autoLoginSpinner) autoLoginSpinner.style.display = "inline";
+
+    try {
+      await invoke("open_moodle_login_window", { baseUrl });
+    } catch (err) {
+      alert("Erro ao abrir janela de login institucional: " + err);
+      btnAutoLogin.disabled = false;
+      if (autoLoginSpinner) autoLoginSpinner.style.display = "none";
+    }
+  });
+}
+
+// Escuta evento de sessão conectada emitido pelo backend nativo
+if (window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.listen === "function") {
+  window.__TAURI__.event.listen("session_connected", async () => {
+    if (btnAutoLogin) btnAutoLogin.disabled = false;
+    if (autoLoginSpinner) autoLoginSpinner.style.display = "none";
+    const sessionRes = document.getElementById("session-result");
+    if (sessionRes) {
+      sessionRes.className = "result-message success";
+      sessionRes.innerText = "Conexão institucional estabelecida com sucesso via login oficial!";
+      sessionRes.style.display = "block";
+    }
+    await refreshData();
+  });
+}
+
+window.addEventListener("focus", async () => {
+  await refreshData();
+});
+
 document.getElementById("btn-refresh").addEventListener("click", refreshData);
 refreshData();
