@@ -1,9 +1,14 @@
+mod backup;
 mod courses;
 mod outbox;
 mod schema;
 
 #[cfg(test)]
+mod backup_tests;
+#[cfg(test)]
 mod tests;
+
+pub use backup::{BackupData, ImportSummary};
 
 use crate::error::Result;
 use rusqlite::Connection;
