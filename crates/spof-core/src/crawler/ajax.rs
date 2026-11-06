@@ -1,6 +1,55 @@
+use crate::auth::MoodleSession;
 use crate::models::Course;
 use chrono::Utc;
-use serde_json::Value;
+use reqwest::header::{CONTENT_TYPE, COOKIE};
+use serde_json::{json, Value};
+
+pub(crate) fn is_session_rejected(
+    redirected_to_login: bool,
+    successful_responses: usize,
+    courses_found: usize,
+) -> bool {
+    redirected_to_login && (successful_responses == 0 || courses_found == 0)
+}
+
+pub async fn fetch_ajax_courses(
+    http: &reqwest::Client,
+    base_url: &str,
+    session: &MoodleSession,
+    sesskey: &str,
+) -> Vec<Course> {
+    let ajax_url = format!(
+        "{}/lib/ajax/service.php?sesskey={}&info=core_course_get_enrolled_courses_by_timeline_classification",
+        base_url,
+        sesskey
+    );
+    let ajax_payload = json!([{
+        "index": 0,
+        "methodname": "core_course_get_enrolled_courses_by_timeline_classification",
+        "args": {
+            "offset": 0,
+            "limit": 0,
+            "classification": "all",
+            "sort": "fullname",
+            "customfieldname": "",
+            "customfieldvalue": ""
+        }
+    }]);
+
+    if let Ok(ajax_resp) = http
+        .post(&ajax_url)
+        .header(COOKIE, session.cookie_header())
+        .header(CONTENT_TYPE, "application/json")
+        .body(ajax_payload.to_string())
+        .send()
+        .await
+    {
+        if let Ok(ajax_json) = ajax_resp.text().await {
+            return parse_ajax_enrolled_courses(&ajax_json);
+        }
+    }
+    Vec::new()
+}
 
 /// Parses the Moodle 4.x AJAX response from `core_course_get_enrolled_courses_by_timeline_classification`.
 pub fn parse_ajax_enrolled_courses(json_str: &str) -> Vec<Course> {

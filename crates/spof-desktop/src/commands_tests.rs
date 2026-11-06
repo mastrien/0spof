@@ -74,6 +74,15 @@ async fn test_desktop_handlers_flow() {
     assert_eq!(courses.len(), 1);
     assert_eq!(courses[0].activities_count, 1);
 
+    // Unsubmitted assignment appears in deadlines
+    let status_with_deadline = handle_get_system_status(&db).unwrap();
+    assert_eq!(status_with_deadline.deadlines_count, 1);
+
+    let deadlines = handle_get_upcoming_deadlines(&db).unwrap();
+    assert_eq!(deadlines.len(), 1);
+    assert_eq!(deadlines[0].id, 9901);
+    assert_eq!(deadlines[0].title, "Implementar Lexer");
+
     let mut temp = NamedTempFile::new().unwrap();
     temp.write_all(b"codigo do parser e lexer").unwrap();
     temp.flush().unwrap();

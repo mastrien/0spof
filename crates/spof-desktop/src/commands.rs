@@ -1,6 +1,6 @@
 use crate::dto::{
     ActivityDto, CourseDto, EnqueueResultDto, OutboxItemDto, ProofDto, SectionDto, SessionInfoDto,
-    SyncSummaryDto, SystemStatusDto,
+    SyncSummaryDto, SystemStatusDto, UpcomingDeadlineDto,
 };
 use spof_core::auth::{MoodleClient, MoodleSession};
 use spof_core::crawler::CourseCrawler;
@@ -38,6 +38,26 @@ pub fn handle_get_system_status(database: &Database) -> Result<SystemStatusDto, 
         deadlines_count: deadlines.len(),
         outbox_count: pending_items.len(),
     })
+}
+
+pub fn handle_get_upcoming_deadlines(
+    database: &Database,
+) -> Result<Vec<UpcomingDeadlineDto>, String> {
+    let deadlines = database
+        .get_upcoming_deadlines()
+        .map_err(|e| e.to_string())?;
+    Ok(deadlines
+        .into_iter()
+        .map(|act| UpcomingDeadlineDto {
+            id: act.id,
+            section_id: act.section_id,
+            title: act.title,
+            activity_type: act.activity_type.as_str().to_string(),
+            url: act.url,
+            due_date: act.due_date.map(|dt| dt.to_rfc3339()),
+            is_submitted: act.is_submitted,
+        })
+        .collect())
 }
 
 pub fn handle_get_courses(database: &Database) -> Result<Vec<CourseDto>, String> {

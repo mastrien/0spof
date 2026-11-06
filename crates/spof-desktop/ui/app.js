@@ -16,6 +16,23 @@ const invoke = async (cmd, args = {}) => {
   return await invoker(cmd, args);
 };
 
+function formatDate(dateStr) {
+  if (!dateStr) return "";
+  try {
+    const dt = new Date(dateStr);
+    if (isNaN(dt.getTime())) return dateStr;
+    return dt.toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch (_) {
+    return dateStr;
+  }
+}
+
 // Navegação de Abas
 const navItems = document.querySelectorAll(".nav-item");
 const tabPanes = document.querySelectorAll(".tab-pane");
@@ -63,10 +80,81 @@ async function refreshData() {
       txt.innerText = "Sessão Desconectada";
     }
 
+    await loadDeadlines();
     await loadCourses();
     await loadOutbox();
   } catch (err) {
     console.error("Erro ao carregar status:", err);
+  }
+}
+
+async function loadDeadlines() {
+  const container = document.getElementById("dashboard-deadlines-list");
+  if (!container) return;
+  try {
+    const deadlines = await invoke("get_upcoming_deadlines");
+    if (!deadlines || deadlines.length === 0) {
+      container.innerHTML = `<p style="color:var(--muted);font-size:13px;padding:8px 0;">Nenhum prazo pendente no momento. Você está em dia!</p>`;
+      return;
+    }
+    container.innerHTML = deadlines
+      .map(
+        (d) => `
+        <div class="list-item">
+          <div class="item-content">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+              <span class="status-badge pending-assignment">
+                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Pendente de envio
+              </span>
+              <strong>${d.title}</strong>
+              <small style="color:var(--muted);">(ID #${d.id})</small>
+            </div>
+            ${
+              d.due_date
+                ? `<span class="due-date-tag"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Entrega até: ${formatDate(d.due_date)}</span>`
+                : `<span style="font-size:12px;color:var(--muted);">Sem prazo limite cadastrado</span>`
+            }
+          </div>
+          <div class="item-actions">
+            <button class="btn btn-primary btn-queue-assign" data-assign-id="${d.id}" style="height:32px;padding:0 12px;font-size:12px;">
+              <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              Enfileirar entrega (#${d.id})
+            </button>
+            ${
+              d.url
+                ? `<button class="btn-discreet btn-open-url" data-target="${d.url}" title="Abrir tarefa no Moodle institucional">
+                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    Abrir no Moodle
+                  </button>`
+                : ""
+            }
+          </div>
+        </div>
+      `
+      )
+      .join("");
+
+    container.querySelectorAll(".btn-queue-assign").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const assignId = btn.getAttribute("data-assign-id");
+        document.getElementById("assign-id").value = assignId;
+        switchTab("queue-modal");
+      });
+    });
+
+    container.querySelectorAll(".btn-open-url").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const target = btn.getAttribute("data-target");
+        try {
+          await invoke("open_target", { target });
+        } catch (err) {
+          alert("Erro ao abrir: " + err);
+        }
+      });
+    });
+  } catch (err) {
+    container.innerHTML = `<p class="error">Erro ao carregar prazos: ${err}</p>`;
   }
 }
 
@@ -128,22 +216,22 @@ async function openCourseDetail(courseId) {
   document.getElementById("courses-master-view").style.display = "none";
   document.getElementById("course-detail-view").style.display = "block";
   document.getElementById("course-detail-short").innerText = course ? `CURSO #${course.id} • ${course.shortname}` : `CURSO #${courseId}`;
-  document.getElementById("course-detail-title").innerText = course ? course.fullname : `Disciplina #${courseId}`;
+  document.getElementById("course-detail-title").innerText = course ? course.fullname : "Disciplina";
 
-  const sectionsContainer = document.getElementById("course-sections-list");
   const tocNav = document.getElementById("course-toc-nav");
-  sectionsContainer.innerHTML = "<p>Carregando seções e atividades…</p>";
-  tocNav.innerHTML = "";
+  const sectionsContainer = document.getElementById("course-sections-list");
+
+  tocNav.innerHTML = "<p style='font-size:12px;color:var(--muted);'>Carregando sumário…</p>";
+  sectionsContainer.innerHTML = "<p style='font-size:13px;color:var(--muted);'>Carregando seções…</p>";
 
   try {
     const sections = await invoke("get_course_details", { courseId });
     if (!sections || sections.length === 0) {
-      sectionsContainer.innerHTML = "<p>Nenhuma seção encontrada para esta disciplina.</p>";
-      tocNav.innerHTML = "<small style='color:var(--muted);'>Sem seções</small>";
+      tocNav.innerHTML = "<p style='font-size:12px;color:var(--muted);'>Nenhuma seção.</p>";
+      sectionsContainer.innerHTML = "<p>Nenhuma seção cadastrada nesta disciplina.</p>";
       return;
     }
 
-    // Renderiza sumário na lateral
     tocNav.innerHTML = sections
       .map(
         (sec, idx) => `
@@ -169,14 +257,14 @@ async function openCourseDetail(courseId) {
 
     sectionsContainer.innerHTML = sections
       .map((sec) => {
-        const summaryHtml = sec.summary ? `<p style="color:#6d7890;margin:4px 0 10px;font-size:13px;">${sec.summary}</p>` : "";
+        const summaryHtml = sec.summary ? `<div class="section-summary">${sec.summary}</div>` : "";
         const activitiesHtml =
           !sec.activities || sec.activities.length === 0
             ? `<p style="color:#8994aa;font-size:12px;">Nenhuma atividade nesta seção.</p>`
             : sec.activities
                 .map((act) => {
                   const descHtml = act.description
-                    ? `<div style="margin-top:6px;padding:8px 10px;background:#f4f6fb;border-radius:7px;font-size:12px;color:#344a78;">${act.description}</div>`
+                    ? `<div class="activity-description">${act.description}</div>`
                     : "";
                   const hasLocalFile = act.local_file_path && act.local_file_path.length > 0;
                   const isVideo = (act.content_mime && act.content_mime.startsWith("video/")) || (act.url && /\.(mp4|webm|mkv)(\?|$)/i.test(act.url));
@@ -232,12 +320,29 @@ async function openCourseDetail(courseId) {
                     }
                   }
 
+                  let badgeHtml = "";
+                  if (act.activity_type === "assign") {
+                    if (act.is_submitted) {
+                      badgeHtml = `<span class="status-badge submitted"><svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Entregue</span>`;
+                    } else {
+                      badgeHtml = `<span class="status-badge pending-assignment"><svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Pendente</span>`;
+                    }
+                  } else {
+                    badgeHtml = `<span class="status-badge pending">${getActivityBadge(act.activity_type)}</span>`;
+                  }
+
+                  const dueDateHtml =
+                    act.activity_type === "assign" && act.due_date
+                      ? `<span class="due-date-tag"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Prazo: ${formatDate(act.due_date)}</span>`
+                      : "";
+
                   return `
                     <div class="list-item activity-card">
                       <div class="item-content">
-                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-                          <span class="status-badge pending">${getActivityBadge(act.activity_type)}</span>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+                          ${badgeHtml}
                           <strong>${act.title}</strong> <small style="color:var(--muted);">(ID #${act.id})</small>
+                          ${dueDateHtml}
                         </div>
                         ${descHtml}
                       </div>
@@ -406,7 +511,7 @@ btnSync.addEventListener("click", async () => {
   try {
     const summary = await invoke("sync_moodle");
     if (summary.courses_synced === 0) {
-      alert("Sincronização concluída, mas nenhum curso foi encontrado. Verifique seu cookie MoodleSession.");
+      alert("Sincronização concluída, mas nenhum curso foi encontrado. Verifique seu login no Moodle.");
     } else {
       alert(
         `Sincronização concluída com sucesso!\nCursos atualizados: ${summary.courses_synced}\nSeções indexadas: ${summary.sections_synced}\nAtividades catalogadas: ${summary.activities_synced}\nArquivos/PDFs cacheados offline: ${summary.resources_cached || 0}`
@@ -449,7 +554,7 @@ const autoLoginSpinner = document.getElementById("auto-login-spinner");
 if (btnAutoLogin) {
   btnAutoLogin.addEventListener("click", async () => {
     const urlInput = document.getElementById("moodle-url");
-    const baseUrl = (urlInput && urlInput.value.trim()) ? urlInput.value.trim() : "https://moodle2.jcr.ifsp.edu.br";
+    const baseUrl = urlInput && urlInput.value.trim() ? urlInput.value.trim() : "https://moodle2.jcr.ifsp.edu.br";
     btnAutoLogin.disabled = true;
     if (autoLoginSpinner) autoLoginSpinner.style.display = "inline";
 
@@ -499,10 +604,33 @@ if (mainScrollEl) {
         currentId = sec.id;
       }
     });
-    if (currentId) {
-      document.querySelectorAll(".toc-link").forEach((link) => {
-        link.classList.toggle("active", link.getAttribute("data-target-sec") === currentId);
-      });
+
+    const tocLinks = document.querySelectorAll("#course-toc-nav .toc-link");
+    tocLinks.forEach((link) => {
+      if (currentId && link.getAttribute("data-target-sec") === currentId) {
+        link.classList.add("active");
+      } else {
+        link.classList.remove("active");
+      }
+    });
+  });
+
+  // Intercepta todos os links normais da página para abrir no navegador padrão externamente
+  mainScrollEl.addEventListener("click", async (e) => {
+    const link = e.target.closest("a");
+    if (
+      link &&
+      link.href &&
+      !link.classList.contains("toc-link") &&
+      !link.classList.contains("nav-item") &&
+      !link.getAttribute("href")?.startsWith("#")
+    ) {
+      e.preventDefault();
+      try {
+        await invoke("open_target", { target: link.href });
+      } catch (err) {
+        console.error("Erro ao abrir link externo:", err);
+      }
     }
-  }, { passive: true });
+  });
 }

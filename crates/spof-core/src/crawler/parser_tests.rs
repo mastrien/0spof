@@ -195,3 +195,36 @@ fn test_parse_assignment_details() {
     assert_eq!(details.title, "Projeto Final da Disciplina");
     assert!(details.is_submitted);
 }
+
+#[test]
+fn test_parse_course_preserves_html_formatting_and_links() {
+    let html = r#"
+        <html>
+            <li id="section-1" class="section">
+                <h3 class="sectionname">Semana 2</h3>
+                <div class="summary"><p>Orientações gerais com link <a href="https://example.com/info">Aqui</a></p></div>
+                <ul class="section">
+                    <li id="module-777" class="activity resource modtype_resource">
+                        <a href="https://moodle/mod/resource/view.php?id=777">
+                            <span class="instancename">Material Aula</span>
+                        </a>
+                        <div class="activity-description">
+                            <p>Leia o capítulo 2.</p>
+                            <ul><li>Tópico A</li><li>Tópico B</li></ul>
+                        </div>
+                    </li>
+                </ul>
+            </li>
+        </html>
+    "#;
+
+    let sections = parse_course_sections(html, 50);
+    assert_eq!(sections.len(), 1);
+    let summary = sections[0].summary.as_ref().unwrap();
+    assert!(summary.contains("<a href=\"https://example.com/info\">Aqui</a>"));
+    assert!(summary.contains("<p>Orientações gerais"));
+
+    let desc = sections[0].activities[0].description.as_ref().unwrap();
+    assert!(desc.contains("<p>Leia o capítulo 2.</p>"));
+    assert!(desc.contains("<ul><li>Tópico A</li><li>Tópico B</li></ul>"));
+}
