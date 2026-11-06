@@ -251,7 +251,7 @@ async function openCourseDetail(courseId) {
           <div id="sec-${sec.id}" style="border:1px solid #e8ebf2;border-radius:12px;padding:16px 18px;background:#fff;scroll-margin-top:20px;">
             <h3 style="font-size:16px;color:#18223a;margin-bottom:6px;">${sec.name}</h3>
             ${summaryHtml}
-            <div>${activitiesHtml}</div>
+            <div class="section-activities">${activitiesHtml}</div>
           </div>
         `;
       })
