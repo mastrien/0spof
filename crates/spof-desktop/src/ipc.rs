@@ -85,10 +85,16 @@ pub fn open_target(target: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn open_moodle_login_window(
+pub async fn open_moodle_login_window(
     app: tauri::AppHandle,
     state: tauri::State<'_, Arc<AppState>>,
     base_url: Option<String>,
 ) -> Result<(), String> {
-    handle_open_moodle_login_window(app, (*state).clone(), base_url)
+    let state_arc = (*state).clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = handle_open_moodle_login_window(app, state_arc, base_url) {
+            eprintln!("Falha ao abrir janela de login Moodle: {}", e);
+        }
+    });
+    Ok(())
 }

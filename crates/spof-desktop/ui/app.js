@@ -475,6 +475,8 @@ if (window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.
 }
 
 window.addEventListener("focus", async () => {
+  if (btnAutoLogin) btnAutoLogin.disabled = false;
+  if (autoLoginSpinner) autoLoginSpinner.style.display = "none";
   await refreshData();
 });
 
