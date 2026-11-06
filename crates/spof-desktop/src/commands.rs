@@ -33,8 +33,13 @@ pub fn handle_get_system_status(database: &Database) -> Result<SystemStatusDto, 
         .get_pending_outbox_items()
         .map_err(|e| e.to_string())?;
 
+    let muted_courses_count = courses.iter().filter(|c| c.is_muted).count();
+    let active_courses_count = courses.len() - muted_courses_count;
+
     Ok(SystemStatusDto {
         courses_count: courses.len(),
+        active_courses_count,
+        muted_courses_count,
         deadlines_count: deadlines.len(),
         outbox_count: pending_items.len(),
     })
@@ -78,9 +83,20 @@ pub fn handle_get_courses(database: &Database) -> Result<Vec<CourseDto>, String>
                 shortname: course.shortname,
                 sections_count: sections.len(),
                 activities_count,
+                is_muted: course.is_muted,
             }
         })
         .collect())
+}
+
+pub fn handle_set_course_muted(
+    database: &Database,
+    course_id: i64,
+    is_muted: bool,
+) -> Result<(), String> {
+    database
+        .set_course_muted(course_id, is_muted)
+        .map_err(|e| e.to_string())
 }
 
 pub fn handle_get_course_details(

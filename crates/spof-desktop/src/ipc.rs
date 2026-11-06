@@ -26,6 +26,15 @@ pub fn get_courses(state: tauri::State<'_, Arc<AppState>>) -> Result<Vec<CourseD
 }
 
 #[tauri::command]
+pub fn set_course_muted(
+    state: tauri::State<'_, Arc<AppState>>,
+    course_id: i64,
+    is_muted: bool,
+) -> Result<(), String> {
+    handle_set_course_muted(&state.db, course_id, is_muted)
+}
+
+#[tauri::command]
 pub fn get_course_details(
     state: tauri::State<'_, Arc<AppState>>,
     course_id: i64,

@@ -12,7 +12,8 @@ pub(crate) fn initialize_schema(connection: &Connection) -> Result<()> {
             fullname TEXT NOT NULL,
             shortname TEXT NOT NULL,
             summary TEXT,
-            last_synced_at TEXT
+            last_synced_at TEXT,
+            is_muted INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS sections (
@@ -52,10 +53,15 @@ pub(crate) fn initialize_schema(connection: &Connection) -> Result<()> {
 
         CREATE INDEX IF NOT EXISTS idx_activities_due_date ON activities(due_date);
         CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox_items(status);
+        CREATE INDEX IF NOT EXISTS idx_courses_muted ON courses(is_muted);
         "#,
     )?;
 
     // Idempotent column migrations for existing databases
+    let _ = connection.execute(
+        "ALTER TABLE courses ADD COLUMN is_muted INTEGER NOT NULL DEFAULT 0;",
+        [],
+    );
     let _ = connection.execute("ALTER TABLE activities ADD COLUMN description TEXT;", []);
     let _ = connection.execute(
         "ALTER TABLE activities ADD COLUMN local_file_path TEXT;",

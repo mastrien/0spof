@@ -71,6 +71,8 @@ pub struct Course {
     pub shortname: String,
     pub summary: Option<String>,
     pub last_synced_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub is_muted: bool,
 }
 
 #[cfg(test)]
@@ -117,10 +119,12 @@ mod tests {
             shortname: "ED-2026".to_string(),
             summary: Some("Curso avançado".to_string()),
             last_synced_at: None,
+            is_muted: false,
         };
 
         let json = serde_json::to_string(&course).expect("serialization failed");
         let deserialized: Course = serde_json::from_str(&json).expect("deserialization failed");
         assert_eq!(course, deserialized);
+        assert!(!deserialized.is_muted);
     }
 }

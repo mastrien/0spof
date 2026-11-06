@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SystemStatusDto {
     pub courses_count: usize,
+    pub active_courses_count: usize,
+    pub muted_courses_count: usize,
     pub deadlines_count: usize,
     pub outbox_count: usize,
 }
@@ -14,6 +16,7 @@ pub struct CourseDto {
     pub shortname: String,
     pub sections_count: usize,
     pub activities_count: usize,
+    pub is_muted: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

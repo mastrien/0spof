@@ -108,6 +108,7 @@ pub fn parse_ajax_enrolled_courses(json_str: &str) -> Vec<Course> {
                     shortname,
                     summary,
                     last_synced_at: Some(Utc::now()),
+                    is_muted: false,
                 });
             }
         }
