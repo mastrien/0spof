@@ -24,6 +24,7 @@ async fn test_moodle_mcp_tools_flow() {
         shortname: "IA".to_string(),
         summary: None,
         last_synced_at: None,
+        is_muted: false,
     };
     db.upsert_course(&course).unwrap();
 
@@ -83,6 +84,7 @@ async fn test_course_sections_and_deadlines_tools() {
         shortname: "BDD1".to_string(),
         summary: None,
         last_synced_at: None,
+        is_muted: false,
     })
     .unwrap();
     db.upsert_section(&Section {

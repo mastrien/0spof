@@ -27,11 +27,13 @@ fn test_courses_crud() {
         shortname: "SO".to_string(),
         summary: Some("Ementa de SO".to_string()),
         last_synced_at: Some(Utc::now()),
+        is_muted: false,
     };
 
     db.upsert_course(&course).unwrap();
     let fetched = db.get_course(10).unwrap().expect("course not found");
     assert_eq!(fetched.fullname, "Sistemas Operacionais");
+    assert!(!fetched.is_muted);
 
     // Update
     let updated_course = Course {
@@ -40,6 +42,7 @@ fn test_courses_crud() {
         shortname: "SO-Adv".to_string(),
         summary: None,
         last_synced_at: None,
+        is_muted: false,
     };
     db.upsert_course(&updated_course).unwrap();
     let fetched_updated = db.get_course(10).unwrap().unwrap();
@@ -56,6 +59,7 @@ fn test_sections_and_activities() {
         shortname: "CALC1".to_string(),
         summary: None,
         last_synced_at: None,
+        is_muted: false,
     };
     db.upsert_course(&course).unwrap();
 
@@ -178,6 +182,7 @@ fn test_activity_submission_details_and_upcoming_deadlines() {
         shortname: "ALG".to_string(),
         summary: None,
         last_synced_at: None,
+        is_muted: false,
     };
     db.upsert_course(&course).unwrap();
     let section = Section {
@@ -203,10 +208,23 @@ fn test_activity_submission_details_and_upcoming_deadlines() {
     };
     db.upsert_activity(&assign).unwrap();
 
-    // As an unsubmitted assignment, it appears in upcoming deadlines even before due_date is known
+    // As an unsubmitted assignment, it appears in upcoming deadlines
     let deadlines = db.get_upcoming_deadlines().unwrap();
     assert_eq!(deadlines.len(), 1);
     assert_eq!(deadlines[0].id, 501);
+
+    // When course is muted, its deadlines are hidden
+    db.set_course_muted(10, true).unwrap();
+    let course_muted = db.get_course(10).unwrap().unwrap();
+    assert!(course_muted.is_muted);
+
+    let deadlines_muted = db.get_upcoming_deadlines().unwrap();
+    assert!(deadlines_muted.is_empty());
+
+    // When unmuted, deadlines reappear
+    db.set_course_muted(10, false).unwrap();
+    let deadlines_unmuted = db.get_upcoming_deadlines().unwrap();
+    assert_eq!(deadlines_unmuted.len(), 1);
 
     // Update with parsed due date and submitted = true
     let future_date = Utc::now() + chrono::Duration::days(3);

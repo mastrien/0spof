@@ -232,6 +232,7 @@ mod tests {
             shortname: "AC".to_string(),
             summary: None,
             last_synced_at: None,
+            is_muted: false,
         };
         db.upsert_course(&c).unwrap();
 

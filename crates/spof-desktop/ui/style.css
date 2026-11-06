@@ -632,12 +632,13 @@ h2 {
 .section-activities {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
+  gap: 14px;
+  margin-top: 14px;
 }
 
-.activity-card {
+.section-activities > .activity-card {
   width: 100%;
+  margin-bottom: 4px;
 }
 
 .item-list {
@@ -1096,4 +1097,33 @@ h2 {
 .due-date-tag svg {
   width: 13px;
   height: 13px;
+}
+
+
+/* Course Mute and Subtle Counter */
+.metric-subtle-pill {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  background: #edf2f7;
+  padding: 2px 7px;
+  border-radius: 10px;
+  letter-spacing: -0.2px;
+}
+
+.course-muted-row {
+  opacity: 0.88;
+  background: #fbfbfd;
+}
+
+.badge-muted {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #64748b;
+  background: #f1f5f9;
+  border-radius: 5px;
 }

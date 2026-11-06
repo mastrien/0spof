@@ -59,7 +59,16 @@ navItems.forEach((btn) => {
 async function refreshData() {
   try {
     const status = await invoke("get_system_status");
-    document.getElementById("metric-courses").innerText = status.courses_count;
+    document.getElementById("metric-courses").innerText = status.active_courses_count;
+    const mutedPill = document.getElementById("metric-muted-courses");
+    if (mutedPill) {
+      if (status.muted_courses_count > 0) {
+        mutedPill.innerText = `${status.muted_courses_count} silenciado${status.muted_courses_count > 1 ? "s" : ""}`;
+        mutedPill.style.display = "inline-block";
+      } else {
+        mutedPill.style.display = "none";
+      }
+    }
     document.getElementById("metric-deadlines").innerText = status.deadlines_count;
     document.getElementById("metric-outbox").innerText = status.outbox_count;
     document.getElementById("outbox-count").innerText = status.outbox_count;
@@ -170,22 +179,55 @@ async function loadCourses() {
     }
     container.innerHTML = cachedCourses
       .map(
-        (c) => `
-        <div class="list-item course-row" data-course-id="${c.id}" style="cursor:pointer;">
-          <div class="item-content">
-            <strong>${c.fullname}</strong><br>
-            <small>ID #${c.id} • ${c.sections_count || 0} seções • ${c.activities_count || 0} atividades</small>
-          </div>
-          <div class="item-actions">
-            <button class="btn btn-secondary btn-open-course" data-course-id="${c.id}" style="height:32px;padding:0 12px;font-size:12px;">
-              Abrir disciplina
-              <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </button>
-          </div>
-        </div>
-      `
+        (c) => {
+          const muteBadge = c.is_muted
+            ? `<span class="badge-muted" title="Prazos desta disciplina estão ocultos no painel"><svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg> Silenciado</span>`
+            : "";
+          const muteBtn = c.is_muted
+            ? `<button class="btn btn-secondary btn-toggle-mute" data-course-id="${c.id}" data-muted="false" style="height:32px;padding:0 10px;font-size:12px;" title="Reativar acompanhamento de prazos">
+                 <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                 Reativar prazos
+               </button>`
+            : `<button class="btn btn-ghost btn-toggle-mute" data-course-id="${c.id}" data-muted="true" style="height:32px;padding:0 10px;font-size:12px;color:var(--muted);" title="Silenciar prazos deste curso no painel">
+                 <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                 Silenciar
+               </button>`;
+
+          return `
+            <div class="list-item course-row ${c.is_muted ? "course-muted-row" : ""}" data-course-id="${c.id}" style="cursor:pointer;">
+              <div class="item-content">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
+                  <strong>${c.fullname}</strong>
+                  ${muteBadge}
+                </div>
+                <small>ID #${c.id} • ${c.sections_count || 0} seções • ${c.activities_count || 0} atividades</small>
+              </div>
+              <div class="item-actions">
+                ${muteBtn}
+                <button class="btn btn-secondary btn-open-course" data-course-id="${c.id}" style="height:32px;padding:0 12px;font-size:12px;">
+                  Abrir disciplina
+                  <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                </button>
+              </div>
+            </div>
+          `;
+        }
       )
       .join("");
+
+    container.querySelectorAll(".btn-toggle-mute").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const courseId = parseInt(btn.getAttribute("data-course-id"), 10);
+        const isMuted = btn.getAttribute("data-muted") === "true";
+        try {
+          await invoke("set_course_muted", { courseId, isMuted });
+          await refreshData();
+        } catch (err) {
+          alert("Erro ao alterar silenciamento do curso: " + err);
+        }
+      });
+    });
 
     container.querySelectorAll(".course-row").forEach((row) => {
       row.addEventListener("click", () => {
@@ -217,6 +259,29 @@ async function openCourseDetail(courseId) {
   document.getElementById("course-detail-view").style.display = "block";
   document.getElementById("course-detail-short").innerText = course ? `CURSO #${course.id} • ${course.shortname}` : `CURSO #${courseId}`;
   document.getElementById("course-detail-title").innerText = course ? course.fullname : "Disciplina";
+
+  const btnDetailMute = document.getElementById("btn-detail-toggle-mute");
+  if (btnDetailMute && course) {
+    if (course.is_muted) {
+      btnDetailMute.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> <span>Reativar prazos</span>`;
+      btnDetailMute.className = "btn btn-secondary";
+      btnDetailMute.title = "Reativar prazos desta disciplina no painel";
+    } else {
+      btnDetailMute.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg> <span>Silenciar prazos</span>`;
+      btnDetailMute.className = "btn btn-ghost";
+      btnDetailMute.title = "Silenciar prazos desta disciplina no painel";
+    }
+    btnDetailMute.onclick = async () => {
+      try {
+        await invoke("set_course_muted", { courseId: course.id, isMuted: !course.is_muted });
+        course.is_muted = !course.is_muted;
+        await refreshData();
+        await openCourseDetail(courseId);
+      } catch (err) {
+        alert("Erro ao alterar silenciamento: " + err);
+      }
+    };
+  }
 
   const tocNav = document.getElementById("course-toc-nav");
   const sectionsContainer = document.getElementById("course-sections-list");

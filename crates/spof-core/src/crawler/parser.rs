@@ -45,6 +45,7 @@ pub fn parse_dashboard_courses(html: &str) -> Vec<Course> {
                         shortname: format!("CURSO-{}", course_id),
                         summary: None,
                         last_synced_at: Some(Utc::now()),
+                        is_muted: false,
                     });
                 }
             }

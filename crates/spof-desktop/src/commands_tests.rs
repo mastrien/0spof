@@ -11,6 +11,8 @@ async fn test_desktop_handlers_flow() {
     // 1. Initial status and session info
     let status = handle_get_system_status(&db).unwrap();
     assert_eq!(status.courses_count, 0);
+    assert_eq!(status.active_courses_count, 0);
+    assert_eq!(status.muted_courses_count, 0);
 
     let sess_info = handle_get_session_info(&state);
     assert!(!sess_info.is_authenticated);
@@ -39,6 +41,7 @@ async fn test_desktop_handlers_flow() {
         shortname: "COMP".to_string(),
         summary: None,
         last_synced_at: None,
+        is_muted: false,
     };
     db.upsert_course(&course).unwrap();
 
@@ -73,15 +76,31 @@ async fn test_desktop_handlers_flow() {
     let courses = handle_get_courses(&db).unwrap();
     assert_eq!(courses.len(), 1);
     assert_eq!(courses[0].activities_count, 1);
+    assert!(!courses[0].is_muted);
 
     // Unsubmitted assignment appears in deadlines
     let status_with_deadline = handle_get_system_status(&db).unwrap();
+    assert_eq!(status_with_deadline.courses_count, 1);
+    assert_eq!(status_with_deadline.active_courses_count, 1);
+    assert_eq!(status_with_deadline.muted_courses_count, 0);
     assert_eq!(status_with_deadline.deadlines_count, 1);
 
     let deadlines = handle_get_upcoming_deadlines(&db).unwrap();
     assert_eq!(deadlines.len(), 1);
     assert_eq!(deadlines[0].id, 9901);
     assert_eq!(deadlines[0].title, "Implementar Lexer");
+
+    // Silence course and verify deadline hiding
+    handle_set_course_muted(&db, 99, true).unwrap();
+    let status_muted = handle_get_system_status(&db).unwrap();
+    assert_eq!(status_muted.active_courses_count, 0);
+    assert_eq!(status_muted.muted_courses_count, 1);
+    assert_eq!(status_muted.deadlines_count, 0);
+    assert!(handle_get_upcoming_deadlines(&db).unwrap().is_empty());
+
+    // Unsilence course
+    handle_set_course_muted(&db, 99, false).unwrap();
+    assert_eq!(handle_get_upcoming_deadlines(&db).unwrap().len(), 1);
 
     let mut temp = NamedTempFile::new().unwrap();
     temp.write_all(b"codigo do parser e lexer").unwrap();

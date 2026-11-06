@@ -4,6 +4,23 @@ use crate::models::{Activity, ActivityType, Course, Section};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Row};
 
+fn map_course_row(row: &Row) -> rusqlite::Result<Course> {
+    let last_synced_str: Option<String> = row.get(4)?;
+    let is_muted_flag: i64 = row.get(5).unwrap_or(0);
+    Ok(Course {
+        id: row.get(0)?,
+        fullname: row.get(1)?,
+        shortname: row.get(2)?,
+        summary: row.get(3)?,
+        last_synced_at: last_synced_str.and_then(|timestamp_str| {
+            DateTime::parse_from_rfc3339(&timestamp_str)
+                .ok()
+                .map(|datetime| datetime.with_timezone(&Utc))
+        }),
+        is_muted: is_muted_flag == 1,
+    })
+}
+
 fn map_activity_row(row: &Row) -> rusqlite::Result<Activity> {
     let type_str: String = row.get(3)?;
     let due_date_str: Option<String> = row.get(8)?;
@@ -33,8 +50,8 @@ impl Database {
         let connection = self.conn.lock().unwrap();
         connection.execute(
             r#"
-            INSERT INTO courses (id, fullname, shortname, summary, last_synced_at)
-            VALUES (?1, ?2, ?3, ?4, ?5)
+            INSERT INTO courses (id, fullname, shortname, summary, last_synced_at, is_muted)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
             ON CONFLICT(id) DO UPDATE SET
                 fullname = excluded.fullname,
                 shortname = excluded.shortname,
@@ -49,7 +66,17 @@ impl Database {
                 course
                     .last_synced_at
                     .map(|timestamp| timestamp.to_rfc3339()),
+                if course.is_muted { 1 } else { 0 },
             ],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_course_muted(&self, course_id: i64, is_muted: bool) -> Result<()> {
+        let connection = self.conn.lock().unwrap();
+        connection.execute(
+            "UPDATE courses SET is_muted = ?1 WHERE id = ?2",
+            params![if is_muted { 1 } else { 0 }, course_id],
         )?;
         Ok(())
     }
@@ -57,22 +84,9 @@ impl Database {
     pub fn get_courses(&self) -> Result<Vec<Course>> {
         let connection = self.conn.lock().unwrap();
         let mut statement = connection.prepare(
-            "SELECT id, fullname, shortname, summary, last_synced_at FROM courses ORDER BY fullname ASC",
+            "SELECT id, fullname, shortname, summary, last_synced_at, is_muted FROM courses ORDER BY fullname ASC",
         )?;
-        let rows = statement.query_map([], |row| {
-            let last_synced_str: Option<String> = row.get(4)?;
-            Ok(Course {
-                id: row.get(0)?,
-                fullname: row.get(1)?,
-                shortname: row.get(2)?,
-                summary: row.get(3)?,
-                last_synced_at: last_synced_str.and_then(|timestamp_str| {
-                    DateTime::parse_from_rfc3339(&timestamp_str)
-                        .ok()
-                        .map(|datetime| datetime.with_timezone(&Utc))
-                }),
-            })
-        })?;
+        let rows = statement.query_map([], map_course_row)?;
 
         let mut course_list = Vec::new();
         for course_row in rows {
@@ -84,23 +98,9 @@ impl Database {
     pub fn get_course(&self, course_id: i64) -> Result<Option<Course>> {
         let connection = self.conn.lock().unwrap();
         let mut statement = connection.prepare(
-            "SELECT id, fullname, shortname, summary, last_synced_at FROM courses WHERE id = ?1",
+            "SELECT id, fullname, shortname, summary, last_synced_at, is_muted FROM courses WHERE id = ?1",
         )?;
-        let mut rows = statement.query_map(params![course_id], |row| {
-            let last_synced_str: Option<String> = row.get(4)?;
-            Ok(Course {
-                id: row.get(0)?,
-                fullname: row.get(1)?,
-                shortname: row.get(2)?,
-                summary: row.get(3)?,
-                last_synced_at: last_synced_str.and_then(|timestamp_str| {
-                    DateTime::parse_from_rfc3339(&timestamp_str)
-                        .ok()
-                        .map(|datetime| datetime.with_timezone(&Utc))
-                }),
-            })
-        })?;
-
+        let mut rows = statement.query_map(params![course_id], map_course_row)?;
         if let Some(course_result) = rows.next() {
             Ok(Some(course_result?))
         } else {
@@ -293,13 +293,17 @@ impl Database {
         let connection = self.conn.lock().unwrap();
         let mut statement = connection.prepare(
             r#"
-            SELECT id, section_id, title, activity_type, url, description, local_file_path, content_mime, due_date, is_submitted 
-            FROM activities 
-            WHERE (activity_type = 'assign' OR due_date IS NOT NULL) AND is_submitted = 0
+            SELECT a.id, a.section_id, a.title, a.activity_type, a.url, a.description, a.local_file_path, a.content_mime, a.due_date, a.is_submitted 
+            FROM activities a
+            JOIN sections s ON a.section_id = s.id
+            JOIN courses c ON s.course_id = c.id
+            WHERE c.is_muted = 0 
+              AND (a.activity_type = 'assign' OR a.due_date IS NOT NULL) 
+              AND a.is_submitted = 0
             ORDER BY 
-                CASE WHEN due_date IS NOT NULL THEN 0 ELSE 1 END,
-                due_date ASC,
-                id ASC
+                CASE WHEN a.due_date IS NOT NULL THEN 0 ELSE 1 END,
+                a.due_date ASC,
+                a.id ASC
             "#,
         )?;
         let rows = statement.query_map([], map_activity_row)?;

@@ -78,6 +78,7 @@ pub fn run() {
             ipc::get_system_status,
             ipc::get_upcoming_deadlines,
             ipc::get_courses,
+            ipc::set_course_muted,
             ipc::get_course_details,
             ipc::get_outbox_items,
             ipc::enqueue_submission,
