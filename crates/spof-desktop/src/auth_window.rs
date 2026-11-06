@@ -59,8 +59,21 @@ pub fn handle_open_moodle_login_window(
         #[cfg(windows)]
         {
             let url_str = _payload.url().as_str();
-            if is_authenticated_moodle_url(url_str) {
-                extract_and_save_cookie_windows(&_win, &app_clone, &state_clone, &clean_base_clone);
+            if _payload.event() == tauri::webview::PageLoadEvent::Finished
+                && is_authenticated_moodle_url(url_str)
+            {
+                let win_clone = _win.clone();
+                let app_clone = app_clone.clone();
+                let state_clone = state_clone.clone();
+                let clean_base_clone = clean_base_clone.clone();
+                tauri::async_runtime::spawn(async move {
+                    extract_and_save_cookie_windows(
+                        &win_clone,
+                        &app_clone,
+                        &state_clone,
+                        &clean_base_clone,
+                    );
+                });
             }
         }
         #[cfg(not(windows))]
