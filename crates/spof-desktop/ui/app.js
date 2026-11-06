@@ -84,14 +84,16 @@ async function loadCourses() {
       .map(
         (c) => `
         <div class="list-item course-row" data-course-id="${c.id}" style="cursor:pointer;">
-          <div>
+          <div class="item-content">
             <strong>${c.fullname}</strong><br>
             <small>ID #${c.id} • ${c.sections_count || 0} seções • ${c.activities_count || 0} atividades</small>
           </div>
-          <button class="btn btn-secondary btn-open-course" data-course-id="${c.id}">
-            Abrir disciplina
-            <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </button>
+          <div class="item-actions">
+            <button class="btn btn-secondary btn-open-course" data-course-id="${c.id}" style="height:32px;padding:0 12px;font-size:12px;">
+              Abrir disciplina
+              <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </button>
+          </div>
         </div>
       `
       )
@@ -231,15 +233,15 @@ async function openCourseDetail(courseId) {
                   }
 
                   return `
-                    <div class="list-item" style="align-items:flex-start;flex-direction:column;gap:8px;margin-top:8px;">
-                      <div style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-                        <div style="display:flex;align-items:center;gap:8px;">
+                    <div class="list-item activity-card">
+                      <div class="item-content">
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
                           <span class="status-badge pending">${getActivityBadge(act.activity_type)}</span>
-                          <strong>${act.title}</strong> <small>(ID #${act.id})</small>
+                          <strong>${act.title}</strong> <small style="color:var(--muted);">(ID #${act.id})</small>
                         </div>
-                        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">${actionsHtml}</div>
+                        ${descHtml}
                       </div>
-                      ${descHtml}
+                      ${actionsHtml ? `<div class="item-actions">${actionsHtml}</div>` : ""}
                     </div>
                   `;
                 })
@@ -318,12 +320,14 @@ async function loadOutbox() {
       .map(
         (item) => `
         <div class="list-item">
-          <div>
-            <strong>Tarefa #${item.assign_id}:</strong> ${item.filename}<br>
+          <div class="item-content">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span class="status-badge ${item.status}">${item.status}</span>
+              <strong>Tarefa #${item.assign_id}: ${item.filename}</strong>
+            </div>
             <small>Tentativas: ${item.retry_count} | Hash: ${item.file_hash.substring(0, 16)}...</small>
           </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span class="status-badge ${item.status}">${item.status}</span>
+          <div class="item-actions">
             <button class="btn btn-secondary btn-proof" data-id="${item.id}" style="height:30px;padding:0 10px;font-size:12px;">
               <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
               Ver Dossiê
