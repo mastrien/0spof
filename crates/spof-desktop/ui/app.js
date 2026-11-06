@@ -486,3 +486,23 @@ window.addEventListener("focus", async () => {
 
 document.getElementById("btn-refresh").addEventListener("click", refreshData);
 refreshData();
+
+// ScrollSpy para destacar dinamicamente a seção ativa no sumário
+const mainScrollEl = document.querySelector(".main-content");
+if (mainScrollEl) {
+  mainScrollEl.addEventListener("scroll", () => {
+    const sections = document.querySelectorAll("[id^='sec-']");
+    let currentId = "";
+    sections.forEach((sec) => {
+      const rect = sec.getBoundingClientRect();
+      if (rect.top <= 200) {
+        currentId = sec.id;
+      }
+    });
+    if (currentId) {
+      document.querySelectorAll(".toc-link").forEach((link) => {
+        link.classList.toggle("active", link.getAttribute("data-target-sec") === currentId);
+      });
+    }
+  }, { passive: true });
+}
