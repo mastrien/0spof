@@ -50,14 +50,10 @@ pub(crate) fn initialize_schema(connection: &Connection) -> Result<()> {
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
-
-        CREATE INDEX IF NOT EXISTS idx_activities_due_date ON activities(due_date);
-        CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox_items(status);
-        CREATE INDEX IF NOT EXISTS idx_courses_muted ON courses(is_muted);
         "#,
     )?;
 
-    // Idempotent column migrations for existing databases
+    // Idempotent column migrations for existing databases (must run before indices on these columns)
     let _ = connection.execute(
         "ALTER TABLE courses ADD COLUMN is_muted INTEGER NOT NULL DEFAULT 0;",
         [],
@@ -68,6 +64,15 @@ pub(crate) fn initialize_schema(connection: &Connection) -> Result<()> {
         [],
     );
     let _ = connection.execute("ALTER TABLE activities ADD COLUMN content_mime TEXT;", []);
+
+    // Create indices after migrations ensure all columns exist
+    connection.execute_batch(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_activities_due_date ON activities(due_date);
+        CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox_items(status);
+        CREATE INDEX IF NOT EXISTS idx_courses_muted ON courses(is_muted);
+        "#,
+    )?;
 
     Ok(())
 }

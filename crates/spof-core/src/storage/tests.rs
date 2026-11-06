@@ -239,3 +239,31 @@ fn test_activity_submission_details_and_upcoming_deadlines() {
     let deadlines_after = db.get_upcoming_deadlines().unwrap();
     assert!(deadlines_after.is_empty());
 }
+
+#[test]
+fn test_legacy_schema_migration_without_is_muted() {
+    let conn = rusqlite::Connection::open_in_memory().unwrap();
+    // Simulate legacy schema created before is_muted column was introduced
+    conn.execute_batch(
+        r#"
+        CREATE TABLE courses (
+            id INTEGER PRIMARY KEY,
+            fullname TEXT NOT NULL,
+            shortname TEXT NOT NULL,
+            summary TEXT,
+            last_synced_at TEXT
+        );
+        "#,
+    )
+    .unwrap();
+
+    // Now run initialize_schema on this legacy connection
+    super::schema::initialize_schema(&conn).expect("migration of legacy schema must succeed");
+
+    // Verify is_muted column and index were successfully added
+    conn.execute(
+        "INSERT INTO courses (id, fullname, shortname, is_muted) VALUES (1, 'Legacy', 'LEG', 0)",
+        [],
+    )
+    .unwrap();
+}
