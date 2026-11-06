@@ -12,4 +12,4 @@ pub use crypto::*;
 pub use error::{Result, SpofError};
 pub use models::*;
 pub use outbox::{OutboxEngine, SubmissionProof, TsaClient};
-pub use storage::Database;
+pub use storage::{BackupData, Database, ImportSummary};

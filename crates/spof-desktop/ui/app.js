@@ -699,3 +699,114 @@ if (mainScrollEl) {
     }
   });
 }
+
+// Logout (Apagar Cookie)
+const btnLogout = document.getElementById("btn-logout");
+if (btnLogout) {
+  btnLogout.addEventListener("click", async () => {
+    if (!confirm("Deseja realmente deslogar e apagar a sessÃ£o atual?")) return;
+    try {
+      await invoke("logout");
+      const moodleCookie = document.getElementById("moodle-cookie");
+      if (moodleCookie) moodleCookie.value = "";
+      const sessionResult = document.getElementById("session-result");
+      if (sessionResult) {
+        sessionResult.className = "result-message";
+        sessionResult.style.display = "none";
+      }
+      await refreshData();
+      alert("SessÃ£o desconectada e cookie apagado com sucesso.");
+    } catch (err) {
+      alert("Erro ao deslogar: " + err);
+    }
+  });
+}
+
+// Exportar dados locais (JSON)
+const btnExportData = document.getElementById("btn-export-data");
+if (btnExportData) {
+  btnExportData.addEventListener("click", async () => {
+    try {
+      const jsonContent = await invoke("export_data");
+      const blob = new Blob([jsonContent], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const dateStr = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `0spof-backup-${dateStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      const resBox = document.getElementById("data-management-result");
+      if (resBox) {
+        resBox.className = "result-message success";
+        resBox.innerText = "ExportaÃ§Ã£o de dados em JSON concluÃ­da com sucesso!";
+        resBox.style.display = "block";
+      }
+    } catch (err) {
+      alert("Erro ao exportar dados: " + err);
+    }
+  });
+}
+
+// Importar dados locais (JSON)
+const btnImportData = document.getElementById("btn-import-data");
+const fileImportInput = document.getElementById("file-import-input");
+
+if (btnImportData && fileImportInput) {
+  btnImportData.addEventListener("click", () => {
+    fileImportInput.value = "";
+    fileImportInput.click();
+  });
+
+  fileImportInput.addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const jsonContent = event.target.result;
+        const summary = await invoke("import_data", { jsonContent });
+        const resBox = document.getElementById("data-management-result");
+        if (resBox) {
+          resBox.className = "result-message success";
+          resBox.innerText = `Backup importado com sucesso! Cursos: ${summary.courses_imported}, SeÃ§Ãµes: ${summary.sections_imported}, Atividades: ${summary.activities_imported}, Fila: ${summary.outbox_items_imported}`;
+          resBox.style.display = "block";
+        }
+        await refreshData();
+        alert(`ImportaÃ§Ã£o concluÃ­da com sucesso!\nCursos importados: ${summary.courses_imported}\nSeÃ§Ãµes: ${summary.sections_imported}\nAtividades: ${summary.activities_imported}\nItens na fila: ${summary.outbox_items_imported}`);
+      } catch (err) {
+        alert("Erro ao importar arquivo de backup: " + err);
+      }
+    };
+    reader.readAsText(file);
+  });
+}
+
+// Apagar todos os dados
+const btnWipeData = document.getElementById("btn-wipe-data");
+if (btnWipeData) {
+  btnWipeData.addEventListener("click", async () => {
+    const confirmed = confirm(
+      "AtenÃ§Ã£o: todos os cursos, seÃ§Ãµes, atividades e itens na fila de envio serÃ£o apagados permanentemente do banco local.\n\nDeseja realmente apagar todos os dados?"
+    );
+    if (!confirmed) return;
+
+    try {
+      await invoke("wipe_all_data");
+      const resBox = document.getElementById("data-management-result");
+      if (resBox) {
+        resBox.className = "result-message success";
+        resBox.innerText = "Todos os dados locais foram apagados com sucesso.";
+        resBox.style.display = "block";
+      }
+      await refreshData();
+      alert("Todos os dados locais foram apagados com sucesso.");
+    } catch (err) {
+      alert("Erro ao apagar dados: " + err);
+    }
+  });
+}

@@ -1,8 +1,16 @@
 use crate::auth_window::handle_open_moodle_login_window;
-use crate::commands::*;
+use crate::commands::{
+    handle_download_activity_media, handle_enqueue_submission, handle_get_course_details,
+    handle_get_courses, handle_get_outbox_items, handle_get_session_info,
+    handle_get_submission_proof, handle_get_system_status, handle_get_upcoming_deadlines,
+    handle_open_target, handle_save_session, handle_set_course_muted, handle_sync_moodle, AppState,
+};
+use crate::data_commands::{
+    handle_export_data, handle_import_data, handle_logout, handle_wipe_all_data,
+};
 use crate::dto::{
-    CourseDto, EnqueueResultDto, OutboxItemDto, ProofDto, SectionDto, SessionInfoDto,
-    SyncSummaryDto, SystemStatusDto, UpcomingDeadlineDto,
+    CourseDto, EnqueueResultDto, ImportSummaryDto, OutboxItemDto, ProofDto, SectionDto,
+    SessionInfoDto, SyncSummaryDto, SystemStatusDto, UpcomingDeadlineDto,
 };
 use std::sync::Arc;
 
@@ -113,4 +121,27 @@ pub async fn open_moodle_login_window(
         }
     });
     Ok(())
+}
+
+#[tauri::command]
+pub fn logout(state: tauri::State<'_, Arc<AppState>>) -> SessionInfoDto {
+    handle_logout(&state)
+}
+
+#[tauri::command]
+pub fn wipe_all_data(state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
+    handle_wipe_all_data(&state)
+}
+
+#[tauri::command]
+pub fn export_data(state: tauri::State<'_, Arc<AppState>>) -> Result<String, String> {
+    handle_export_data(&state)
+}
+
+#[tauri::command]
+pub fn import_data(
+    state: tauri::State<'_, Arc<AppState>>,
+    json_content: String,
+) -> Result<ImportSummaryDto, String> {
+    handle_import_data(&state, json_content)
 }

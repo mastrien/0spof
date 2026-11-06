@@ -92,3 +92,11 @@ pub struct UpcomingDeadlineDto {
     pub due_date: Option<String>,
     pub is_submitted: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ImportSummaryDto {
+    pub courses_imported: usize,
+    pub sections_imported: usize,
+    pub activities_imported: usize,
+    pub outbox_items_imported: usize,
+}
