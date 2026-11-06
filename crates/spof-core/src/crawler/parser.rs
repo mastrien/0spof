@@ -1,16 +1,10 @@
 pub use crate::crawler::ajax::parse_ajax_enrolled_courses;
+pub use crate::crawler::assignment_parser::{
+    clean_html, parse_assignment_details, AssignmentDetails,
+};
 use crate::models::{Activity, ActivityType, Course, Section};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use scraper::{Html, Selector};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AssignmentDetails {
-    pub assign_id: i64,
-    pub title: String,
-    pub is_submitted: bool,
-    pub due_date: Option<DateTime<Utc>>,
-    pub time_remaining: Option<String>,
-}
 
 /// Parses the Moodle Dashboard (`/my/` or `/my/courses.php`) HTML to extract enrolled courses.
 pub fn parse_dashboard_courses(html: &str) -> Vec<Course> {
@@ -101,14 +95,7 @@ pub fn parse_course_sections(html: &str, course_id: i64) -> Vec<Section> {
         let section_summary = section_element
             .select(&section_summary_selector)
             .next()
-            .map(|el| {
-                el.text()
-                    .collect::<Vec<_>>()
-                    .join(" ")
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            })
+            .map(|el| clean_html(&el.inner_html()))
             .filter(|s| !s.is_empty());
 
         let mut activities = Vec::new();
@@ -249,15 +236,7 @@ fn parse_activity_element(element: &scraper::ElementRef, section_id: i64) -> Opt
     let description = element
         .select(&description_selector)
         .next()
-        .map(|desc_el| {
-            desc_el
-                .text()
-                .collect::<Vec<_>>()
-                .join(" ")
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-        })
+        .map(|desc_el| clean_html(&desc_el.inner_html()))
         .filter(|s| !s.is_empty());
 
     Some(Activity {
@@ -272,38 +251,6 @@ fn parse_activity_element(element: &scraper::ElementRef, section_id: i64) -> Opt
         due_date: None,
         is_submitted: false,
     })
-}
-
-/// Parses the assignment details page (`/mod/assign/view.php?id=...`).
-pub fn parse_assignment_details(html: &str, assign_id: i64) -> AssignmentDetails {
-    let document = Html::parse_document(html);
-    let title_selector = Selector::parse("h2, .page-header-headings h1").unwrap();
-
-    let title = document
-        .select(&title_selector)
-        .next()
-        .map(|heading| {
-            heading
-                .text()
-                .collect::<Vec<_>>()
-                .join(" ")
-                .trim()
-                .to_string()
-        })
-        .unwrap_or_else(|| format!("Tarefa #{}", assign_id));
-
-    let body_text = document.root_element().text().collect::<Vec<_>>().join(" ");
-    let is_submitted = body_text.contains("Submetido para avaliação")
-        || body_text.contains("Submitted for grading")
-        || body_text.contains("Envio concluído");
-
-    AssignmentDetails {
-        assign_id,
-        title,
-        is_submitted,
-        due_date: None,
-        time_remaining: None,
-    }
 }
 
 fn extract_id_from_url(url: &str) -> Option<i64> {

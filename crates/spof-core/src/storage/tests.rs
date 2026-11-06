@@ -168,3 +168,56 @@ fn test_outbox_items_crud() {
     let pending_after = db.get_pending_outbox_items().unwrap();
     assert!(pending_after.is_empty());
 }
+
+#[test]
+fn test_activity_submission_details_and_upcoming_deadlines() {
+    let db = Database::open_in_memory().unwrap();
+    let course = Course {
+        id: 10,
+        fullname: "Algoritmos".to_string(),
+        shortname: "ALG".to_string(),
+        summary: None,
+        last_synced_at: None,
+    };
+    db.upsert_course(&course).unwrap();
+    let section = Section {
+        id: 101,
+        course_id: 10,
+        name: "Módulo 1".to_string(),
+        summary: None,
+        activities: Vec::new(),
+    };
+    db.upsert_section(&section).unwrap();
+
+    let assign = Activity {
+        id: 501,
+        section_id: 101,
+        title: "EP1".to_string(),
+        activity_type: ActivityType::Assign,
+        url: Some("https://moodle/mod/assign/view.php?id=501".to_string()),
+        description: None,
+        local_file_path: None,
+        content_mime: None,
+        due_date: None,
+        is_submitted: false,
+    };
+    db.upsert_activity(&assign).unwrap();
+
+    // As an unsubmitted assignment, it appears in upcoming deadlines even before due_date is known
+    let deadlines = db.get_upcoming_deadlines().unwrap();
+    assert_eq!(deadlines.len(), 1);
+    assert_eq!(deadlines[0].id, 501);
+
+    // Update with parsed due date and submitted = true
+    let future_date = Utc::now() + chrono::Duration::days(3);
+    db.update_activity_submission_details(501, true, Some(future_date))
+        .unwrap();
+
+    let updated = db.get_activity(501).unwrap().unwrap();
+    assert!(updated.is_submitted);
+    assert!(updated.due_date.is_some());
+
+    // Once submitted, it no longer appears in upcoming deadlines
+    let deadlines_after = db.get_upcoming_deadlines().unwrap();
+    assert!(deadlines_after.is_empty());
+}

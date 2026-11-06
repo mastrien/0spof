@@ -1,11 +1,11 @@
-use crate::auth::{session::parser::extract_sesskey, MoodleClient};
-use crate::crawler::{parser, resource};
+use crate::auth::{session::parser::extract_sesskey, MoodleClient, MoodleSession};
+use crate::crawler::ajax::{fetch_ajax_courses, is_session_rejected};
+use crate::crawler::{assignment_parser, parser, resource};
 use crate::error::{Result, SpofError};
-use crate::models::ActivityType;
+use crate::models::{Activity, ActivityType};
 use crate::storage::Database;
-use reqwest::header::{CONTENT_TYPE, COOKIE};
+use reqwest::header::COOKIE;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -15,16 +15,6 @@ pub struct SyncSummary {
     pub activities_synced: usize,
     #[serde(default)]
     pub resources_cached: usize,
-}
-
-/// A sessão é considerada expirada quando alguma página autenticada (`/my/`) redirecionou
-/// para o login e nenhum curso foi encontrado — a página raiz pública não conta como sucesso.
-pub(crate) fn is_session_rejected(
-    redirected_to_login: bool,
-    successful_responses: usize,
-    courses_found: usize,
-) -> bool {
-    redirected_to_login && (successful_responses == 0 || courses_found == 0)
 }
 
 fn default_cache_dir() -> PathBuf {
@@ -58,7 +48,6 @@ impl CourseCrawler {
         self
     }
 
-    /// Processa o HTML de um Dashboard diretamente e persiste os cursos identificados no banco.
     pub fn sync_from_dashboard_html(&self, html: &str) -> Result<usize> {
         let courses = parser::parse_dashboard_courses(html);
         for course in &courses {
@@ -67,7 +56,6 @@ impl CourseCrawler {
         Ok(courses.len())
     }
 
-    /// Processa o JSON do webservice AJAX do Moodle 4.x e persiste os cursos identificados no banco.
     pub fn sync_from_ajax_courses_json(&self, json_str: &str) -> Result<usize> {
         let courses = parser::parse_ajax_enrolled_courses(json_str);
         for course in &courses {
@@ -76,7 +64,6 @@ impl CourseCrawler {
         Ok(courses.len())
     }
 
-    /// Processa o HTML de uma página de curso diretamente e persiste seções e atividades no banco.
     pub fn sync_from_course_html(&self, course_id: i64, html: &str) -> Result<(usize, usize)> {
         let sections = parser::parse_course_sections(html, course_id);
         let mut total_acts = 0;
@@ -88,15 +75,14 @@ impl CourseCrawler {
                 total_acts += 1;
             }
         }
-
         Ok((sections.len(), total_acts))
     }
 
-    /// Faz o download sob demanda (incluindo vídeos se `allow_video = true`) de uma atividade específica.
     pub async fn download_activity(&self, activity_id: i64, allow_video: bool) -> Result<String> {
-        let session = self.client.session().ok_or_else(|| {
-            SpofError::Authentication("Sessão ausente para download de recurso".to_string())
-        })?;
+        let session = self
+            .client
+            .session()
+            .ok_or_else(|| SpofError::Authentication("Sessão ausente para download".to_string()))?;
         let activity = self.db.get_activity(activity_id)?.ok_or_else(|| {
             SpofError::Validation(format!("Atividade #{} não encontrada", activity_id))
         })?;
@@ -131,7 +117,6 @@ impl CourseCrawler {
         }
     }
 
-    /// Executa a sincronização completa varrendo o dashboard, disciplinas e cacheando PDFs/imagens/HTML.
     pub async fn sync_all(&self) -> Result<SyncSummary> {
         let session = self.client.session().ok_or_else(|| {
             SpofError::Authentication("Sessão ausente para sincronização".to_string())
@@ -182,39 +167,10 @@ impl CourseCrawler {
             ));
         }
 
-        // Tenta buscar via AJAX do Moodle 4.x se tiver sesskey
         if let Some(sesskey) = discovered_sesskey {
-            let ajax_url = format!(
-                "{}/lib/ajax/service.php?sesskey={}&info=core_course_get_enrolled_courses_by_timeline_classification",
-                self.client.base_url(),
-                sesskey
-            );
-            let ajax_payload = json!([{
-                "index": 0,
-                "methodname": "core_course_get_enrolled_courses_by_timeline_classification",
-                "args": {
-                    "offset": 0,
-                    "limit": 0,
-                    "classification": "all",
-                    "sort": "fullname",
-                    "customfieldname": "",
-                    "customfieldvalue": ""
-                }
-            }]);
-
-            if let Ok(ajax_resp) = http
-                .post(&ajax_url)
-                .header(COOKIE, session.cookie_header())
-                .header(CONTENT_TYPE, "application/json")
-                .body(ajax_payload.to_string())
-                .send()
-                .await
-            {
-                if let Ok(ajax_json) = ajax_resp.text().await {
-                    let mut ajax_courses = parser::parse_ajax_enrolled_courses(&ajax_json);
-                    all_courses.append(&mut ajax_courses);
-                }
-            }
+            let mut ajax_courses =
+                fetch_ajax_courses(&http, self.client.base_url(), session, &sesskey).await;
+            all_courses.append(&mut ajax_courses);
         }
 
         let mut seen = std::collections::HashSet::new();
@@ -251,59 +207,10 @@ impl CourseCrawler {
                 }
             }
 
-            // Auto-cache resources & resolve direct external links
             if let Ok(sections) = self.db.get_sections_by_course(course.id) {
                 for section in sections {
                     for act in section.activities {
-                        if act.activity_type == ActivityType::Url {
-                            if let Some(ref act_url) = act.url {
-                                if act_url.contains("/mod/url/view.php") {
-                                    if let Ok(Some(direct_url)) =
-                                        resource::resolve_external_url(&http, session, act_url)
-                                            .await
-                                    {
-                                        let _ = self.db.update_activity_url(act.id, &direct_url);
-                                    }
-                                }
-                            }
-                            continue;
-                        }
-
-                        let should_auto_cache = matches!(
-                            act.activity_type,
-                            ActivityType::Resource | ActivityType::Folder
-                        ) || matches!(
-                            &act.activity_type,
-                            ActivityType::Other(m) if m == "page" || m == "book"
-                        );
-                        if !should_auto_cache {
-                            continue;
-                        }
-                        if let Some(ref existing_path) = act.local_file_path {
-                            if !existing_path.is_empty() && Path::new(existing_path).exists() {
-                                continue;
-                            }
-                        }
-                        if let Some(ref act_url) = act.url {
-                            if let Ok(Some((path, mime))) = resource::download_activity_resource(
-                                &http,
-                                session,
-                                act.id,
-                                &act.title,
-                                act_url,
-                                &self.cache_dir,
-                                false,
-                            )
-                            .await
-                            {
-                                let path_str = path.to_string_lossy().to_string();
-                                let _ =
-                                    self.db.update_activity_local_file(act.id, &path_str, &mime);
-                                if !path_str.is_empty() {
-                                    resources_cached += 1;
-                                }
-                            }
-                        }
+                        resources_cached += self.enrich_activity(&http, session, &act).await;
                     }
                 }
             }
@@ -315,6 +222,83 @@ impl CourseCrawler {
             activities_synced: total_acts,
             resources_cached,
         })
+    }
+
+    async fn enrich_activity(
+        &self,
+        http: &reqwest::Client,
+        session: &MoodleSession,
+        act: &Activity,
+    ) -> usize {
+        let Some(ref act_url) = act.url else {
+            return 0;
+        };
+
+        if act.activity_type == ActivityType::Assign {
+            if let Ok(resp) = http
+                .get(act_url)
+                .header(COOKIE, session.cookie_header())
+                .send()
+                .await
+            {
+                if let Ok(assign_html) = resp.text().await {
+                    let details = assignment_parser::parse_assignment_details(&assign_html, act.id);
+                    let _ = self.db.update_activity_submission_details(
+                        act.id,
+                        details.is_submitted,
+                        details.due_date,
+                    );
+                    if let Some(ref intro) = details.description_html {
+                        let _ = self.db.update_activity_description_if_empty(act.id, intro);
+                    }
+                }
+            }
+            return 0;
+        }
+
+        if act.activity_type == ActivityType::Url {
+            if act_url.contains("/mod/url/view.php") {
+                if let Ok(Some(direct_url)) =
+                    resource::resolve_external_url(http, session, act_url).await
+                {
+                    let _ = self.db.update_activity_url(act.id, &direct_url);
+                }
+            }
+            return 0;
+        }
+
+        let should_auto_cache = matches!(
+            act.activity_type,
+            ActivityType::Resource | ActivityType::Folder
+        ) || matches!(&act.activity_type, ActivityType::Other(m) if m == "page" || m == "book");
+        if !should_auto_cache {
+            return 0;
+        }
+
+        if let Some(ref existing_path) = act.local_file_path {
+            if !existing_path.is_empty() && Path::new(existing_path).exists() {
+                return 0;
+            }
+        }
+
+        if let Ok(Some((path, mime))) = resource::download_activity_resource(
+            http,
+            session,
+            act.id,
+            &act.title,
+            act_url,
+            &self.cache_dir,
+            false,
+        )
+        .await
+        {
+            let path_str = path.to_string_lossy().to_string();
+            let _ = self.db.update_activity_local_file(act.id, &path_str, &mime);
+            if !path_str.is_empty() {
+                return 1;
+            }
+        }
+        0
     }
 }
 

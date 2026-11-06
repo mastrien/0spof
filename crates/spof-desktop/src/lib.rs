@@ -76,6 +76,7 @@ pub fn run() {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             ipc::get_system_status,
+            ipc::get_upcoming_deadlines,
             ipc::get_courses,
             ipc::get_course_details,
             ipc::get_outbox_items,

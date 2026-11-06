@@ -175,7 +175,7 @@ impl Database {
                 local_file_path = COALESCE(excluded.local_file_path, activities.local_file_path),
                 content_mime = COALESCE(excluded.content_mime, activities.content_mime),
                 due_date = COALESCE(excluded.due_date, activities.due_date),
-                is_submitted = excluded.is_submitted;
+                is_submitted = CASE WHEN excluded.is_submitted = 1 THEN 1 ELSE activities.is_submitted END;
             "#,
             params![
                 activity.id,
@@ -189,6 +189,46 @@ impl Database {
                 activity.due_date.map(|timestamp| timestamp.to_rfc3339()),
                 if activity.is_submitted { 1 } else { 0 },
             ],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_activity_submission_details(
+        &self,
+        activity_id: i64,
+        is_submitted: bool,
+        due_date: Option<DateTime<Utc>>,
+    ) -> Result<()> {
+        let connection = self.conn.lock().unwrap();
+        connection.execute(
+            r#"
+            UPDATE activities 
+            SET is_submitted = ?1,
+                due_date = COALESCE(?2, due_date)
+            WHERE id = ?3
+            "#,
+            params![
+                if is_submitted { 1 } else { 0 },
+                due_date.map(|d| d.to_rfc3339()),
+                activity_id,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_activity_description_if_empty(
+        &self,
+        activity_id: i64,
+        description: &str,
+    ) -> Result<()> {
+        let connection = self.conn.lock().unwrap();
+        connection.execute(
+            r#"
+            UPDATE activities 
+            SET description = ?1
+            WHERE id = ?2 AND (description IS NULL OR description = '')
+            "#,
+            params![description, activity_id],
         )?;
         Ok(())
     }
@@ -255,8 +295,11 @@ impl Database {
             r#"
             SELECT id, section_id, title, activity_type, url, description, local_file_path, content_mime, due_date, is_submitted 
             FROM activities 
-            WHERE due_date IS NOT NULL AND is_submitted = 0
-            ORDER BY due_date ASC
+            WHERE (activity_type = 'assign' OR due_date IS NOT NULL) AND is_submitted = 0
+            ORDER BY 
+                CASE WHEN due_date IS NOT NULL THEN 0 ELSE 1 END,
+                due_date ASC,
+                id ASC
             "#,
         )?;
         let rows = statement.query_map([], map_activity_row)?;

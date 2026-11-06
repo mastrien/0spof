@@ -78,3 +78,14 @@ pub struct SyncSummaryDto {
     pub activities_synced: usize,
     pub resources_cached: usize,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UpcomingDeadlineDto {
+    pub id: i64,
+    pub section_id: i64,
+    pub title: String,
+    pub activity_type: String,
+    pub url: Option<String>,
+    pub due_date: Option<String>,
+    pub is_submitted: bool,
+}

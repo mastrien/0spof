@@ -2,7 +2,7 @@ use crate::auth_window::handle_open_moodle_login_window;
 use crate::commands::*;
 use crate::dto::{
     CourseDto, EnqueueResultDto, OutboxItemDto, ProofDto, SectionDto, SessionInfoDto,
-    SyncSummaryDto, SystemStatusDto,
+    SyncSummaryDto, SystemStatusDto, UpcomingDeadlineDto,
 };
 use std::sync::Arc;
 
@@ -11,6 +11,13 @@ pub fn get_system_status(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<SystemStatusDto, String> {
     handle_get_system_status(&state.db)
+}
+
+#[tauri::command]
+pub fn get_upcoming_deadlines(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<Vec<UpcomingDeadlineDto>, String> {
+    handle_get_upcoming_deadlines(&state.db)
 }
 
 #[tauri::command]
