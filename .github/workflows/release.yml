@@ -1,0 +1,169 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for the release (e.g. v0.1.0)'
+        required: false
+        type: string
+      draft:
+        description: 'Create draft release'
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Create pre-release'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform.asset_name }})
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - os: windows-latest
+            asset_name: windows-x86_64
+            archive_ext: zip
+            is_windows: true
+          - os: ubuntu-22.04
+            asset_name: linux-x86_64
+            archive_ext: tar.gz
+            is_windows: false
+          - os: macos-latest
+            asset_name: macos-aarch64
+            archive_ext: tar.gz
+            is_windows: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux GUI Dependencies for Tauri
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libjavascriptcoregtk-4.1-dev libsoup-3.0-dev
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.platform.asset_name }}-release
+
+      - name: Determine release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.tag_name }}" ]; then
+            echo "val=${{ inputs.tag_name }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "val=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "val=v0.1.0-dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build release binaries
+        run: cargo build --release --workspace
+
+      - name: Package Windows binaries (zip)
+        if: matrix.platform.is_windows
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.tag.outputs.val }}"
+          $assetName = "${{ matrix.platform.asset_name }}"
+          $archive = "0spof-$tag-$assetName.zip"
+          $dist = "dist-$assetName"
+          New-Item -ItemType Directory -Path $dist -Force | Out-Null
+          Copy-Item "target/release/0spof.exe" -Destination $dist/
+          Copy-Item "target/release/spof-desktop.exe" -Destination $dist/
+          Copy-Item "target/release/0spof-mcp.exe" -Destination $dist/
+          Copy-Item "README.md" -Destination $dist/
+          Copy-Item "LICENSE" -Destination $dist/
+          Compress-Archive -Path "$dist/*" -DestinationPath $archive
+          $hash = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLower()
+          "$hash  $archive" | Out-File -Encoding ascii -FilePath "$archive.sha256"
+
+      - name: Package Unix binaries (tar.gz)
+        if: "!matrix.platform.is_windows"
+        shell: bash
+        run: |
+          TAG="${{ steps.tag.outputs.val }}"
+          ASSET_NAME="${{ matrix.platform.asset_name }}"
+          ARCHIVE="0spof-${TAG}-${ASSET_NAME}.tar.gz"
+          DIST="dist-${ASSET_NAME}"
+          mkdir -p "$DIST"
+          cp "target/release/0spof" "$DIST/"
+          cp "target/release/spof-desktop" "$DIST/"
+          cp "target/release/0spof-mcp" "$DIST/"
+          cp "README.md" "$DIST/"
+          cp "LICENSE" "$DIST/"
+          tar -czvf "$ARCHIVE" -C "$DIST" .
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$ARCHIVE" > "${ARCHIVE}.sha256"
+          else
+            shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
+          fi
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ matrix.platform.asset_name }}
+          path: |
+            0spof-*.zip
+            0spof-*.zip.sha256
+            0spof-*.tar.gz
+            0spof-*.tar.gz.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag_name }}" ]; then
+            echo "val=${{ inputs.tag_name }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "val=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "val=v0.1.0-dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Display release assets
+        run: ls -lh release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.val }}
+          name: 0spof ${{ steps.tag.outputs.val }}
+          draft: ${{ inputs.draft || false }}
+          prerelease: ${{ inputs.prerelease || false }}
+          generate_release_notes: true
+          files: release-assets/*
