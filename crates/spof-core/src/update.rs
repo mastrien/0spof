@@ -231,4 +231,19 @@ mod tests {
         let err = parse_github_release_json("0.1.0", "not json").unwrap_err();
         assert!(matches!(err, SpofError::Serialization(_)));
     }
+
+    #[tokio::test]
+    #[ignore = "Requires live network access to GitHub API"]
+    async fn test_live_github_releases_api() {
+        let res = check_for_updates("0.0.1")
+            .await
+            .expect("live GitHub API call should succeed");
+        println!("Live update check result: {:?}", res);
+        assert_eq!(res.current_version, "v0.0.1");
+        assert!(res.latest_version.starts_with('v'));
+        assert!(res.update_available);
+        assert!(res
+            .release_url
+            .contains("github.com/mastrien/0spof/releases"));
+    }
 }
