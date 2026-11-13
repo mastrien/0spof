@@ -88,3 +88,10 @@ fn test_handle_export_and_import_data() {
     assert_eq!(restored.len(), 1);
     assert_eq!(restored[0].fullname, "Engenharia de Software");
 }
+
+#[test]
+fn test_handle_get_app_version() {
+    let version = super::handle_get_app_version();
+    assert!(version.starts_with('v'));
+    assert!(spof_core::update::parse_semver_tuple(&version).is_some());
+}

@@ -6,11 +6,12 @@ use crate::commands::{
     handle_open_target, handle_save_session, handle_set_course_muted, handle_sync_moodle, AppState,
 };
 use crate::data_commands::{
-    handle_export_data, handle_import_data, handle_logout, handle_wipe_all_data,
+    handle_check_for_updates, handle_export_data, handle_get_app_version, handle_import_data,
+    handle_logout, handle_wipe_all_data,
 };
 use crate::dto::{
     CourseDto, EnqueueResultDto, ImportSummaryDto, OutboxItemDto, ProofDto, SectionDto,
-    SessionInfoDto, SyncSummaryDto, SystemStatusDto, UpcomingDeadlineDto,
+    SessionInfoDto, SyncSummaryDto, SystemStatusDto, UpcomingDeadlineDto, UpdateInfoDto,
 };
 use std::sync::Arc;
 
@@ -144,4 +145,14 @@ pub fn import_data(
     json_content: String,
 ) -> Result<ImportSummaryDto, String> {
     handle_import_data(&state, json_content)
+}
+
+#[tauri::command]
+pub fn get_app_version() -> String {
+    handle_get_app_version()
+}
+
+#[tauri::command]
+pub async fn check_for_updates() -> Result<UpdateInfoDto, String> {
+    handle_check_for_updates().await
 }
