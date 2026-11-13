@@ -100,3 +100,12 @@ pub struct ImportSummaryDto {
     pub activities_imported: usize,
     pub outbox_items_imported: usize,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UpdateInfoDto {
+    pub current_version: String,
+    pub latest_version: String,
+    pub update_available: bool,
+    pub release_url: String,
+    pub release_notes: Option<String>,
+}

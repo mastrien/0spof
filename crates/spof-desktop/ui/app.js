@@ -810,3 +810,88 @@ if (btnWipeData) {
     }
   });
 }
+
+// Verificação leve de atualizações (GitHub Releases)
+let latestReleaseUrl = "https://github.com/mastrien/0spof/releases";
+
+async function loadAppVersion() {
+  const versionEl = document.getElementById("app-version");
+  if (!versionEl) return;
+  try {
+    const version = await invoke("get_app_version");
+    versionEl.innerText = `• ${version}`;
+  } catch (_) {}
+}
+
+async function checkForUpdates({ silent = true } = {}) {
+  const banner = document.getElementById("update-banner");
+  const titleEl = document.getElementById("update-banner-title");
+  const textEl = document.getElementById("update-banner-text");
+  const resBox = document.getElementById("data-management-result");
+
+  try {
+    const info = await invoke("check_for_updates");
+    latestReleaseUrl = info.release_url || latestReleaseUrl;
+
+    if (info.update_available) {
+      if (titleEl) {
+        titleEl.innerText = `Nova versão disponível: ${info.latest_version}`;
+      }
+      if (textEl) {
+        textEl.innerText = `(versão atual: ${info.current_version})`;
+      }
+      if (banner) {
+        banner.style.display = "flex";
+      }
+      if (!silent && resBox) {
+        resBox.className = "result-message success";
+        resBox.innerText = `Nova versão disponível: ${info.latest_version} (atual: ${info.current_version}).`;
+        resBox.style.display = "block";
+      }
+    } else if (!silent && resBox) {
+      resBox.className = "result-message success";
+      resBox.innerText = `Você já está usando a versão mais recente (${info.current_version}).`;
+      resBox.style.display = "block";
+    }
+  } catch (err) {
+    if (!silent && resBox) {
+      resBox.className = "result-message error";
+      resBox.innerText = `Não foi possível verificar atualizações: ${err}`;
+      resBox.style.display = "block";
+    }
+  }
+}
+
+const btnDownloadUpdate = document.getElementById("btn-download-update");
+if (btnDownloadUpdate) {
+  btnDownloadUpdate.addEventListener("click", async () => {
+    try {
+      await invoke("open_target", { target: latestReleaseUrl });
+    } catch (err) {
+      alert("Erro ao abrir página de atualização: " + err);
+    }
+  });
+}
+
+const btnDismissUpdate = document.getElementById("btn-dismiss-update");
+if (btnDismissUpdate) {
+  btnDismissUpdate.addEventListener("click", () => {
+    const banner = document.getElementById("update-banner");
+    if (banner) banner.style.display = "none";
+  });
+}
+
+const btnCheckUpdates = document.getElementById("btn-check-updates");
+if (btnCheckUpdates) {
+  btnCheckUpdates.addEventListener("click", async () => {
+    btnCheckUpdates.disabled = true;
+    try {
+      await checkForUpdates({ silent: false });
+    } finally {
+      btnCheckUpdates.disabled = false;
+    }
+  });
+}
+
+loadAppVersion();
+checkForUpdates({ silent: true });

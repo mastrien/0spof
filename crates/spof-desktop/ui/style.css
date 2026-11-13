@@ -1166,3 +1166,46 @@ h2 {
 .btn-danger-outline:hover .btn-svg {
   stroke: #9b2c2c;
 }
+
+/* Update Notification Banner & Version Tag */
+.app-version-tag {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  background: #eff4ff;
+  border: 1px solid #c7d7fe;
+  border-radius: 10px;
+  color: #1e3a8a;
+  font-size: 13px;
+}
+
+.update-banner-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.update-banner-svg {
+  flex: none;
+  color: var(--blue);
+}
+
+.update-banner-sub {
+  margin-left: 6px;
+  color: #3b5998;
+}
+
+.update-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}

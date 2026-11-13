@@ -5,6 +5,7 @@ pub mod error;
 pub mod models;
 pub mod outbox;
 pub mod storage;
+pub mod update;
 
 pub use auth::{MoodleClient, MoodleSession};
 pub use crawler::{AssignmentDetails, CourseCrawler, SyncSummary};
@@ -13,3 +14,4 @@ pub use error::{Result, SpofError};
 pub use models::*;
 pub use outbox::{OutboxEngine, SubmissionProof, TsaClient};
 pub use storage::{BackupData, Database, ImportSummary};
+pub use update::{check_for_updates, UpdateCheckResult};

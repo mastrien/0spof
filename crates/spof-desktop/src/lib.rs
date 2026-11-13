@@ -94,6 +94,8 @@ pub fn run() {
             ipc::wipe_all_data,
             ipc::export_data,
             ipc::import_data,
+            ipc::get_app_version,
+            ipc::check_for_updates,
         ])
         .run(tauri::generate_context!())
         .expect("error while running 0spof desktop application");
