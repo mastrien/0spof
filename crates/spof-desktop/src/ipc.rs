@@ -156,3 +156,27 @@ pub fn get_app_version() -> String {
 pub async fn check_for_updates() -> Result<UpdateInfoDto, String> {
     handle_check_for_updates().await
 }
+
+#[tauri::command]
+pub async fn install_update(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let updater = app
+        .updater()
+        .map_err(|e| format!("Updater indisponível: {e}"))?;
+
+    let Some(update) = updater
+        .check()
+        .await
+        .map_err(|e| format!("Falha ao buscar atualização: {e}"))?
+    else {
+        return Ok(false);
+    };
+
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|e| format!("Falha ao baixar ou instalar atualização: {e}"))?;
+
+    app.restart();
+}

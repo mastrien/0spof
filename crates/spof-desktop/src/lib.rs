@@ -74,6 +74,8 @@ pub fn run() {
     let app_state = Arc::new(state);
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             ipc::get_system_status,
@@ -96,6 +98,7 @@ pub fn run() {
             ipc::import_data,
             ipc::get_app_version,
             ipc::check_for_updates,
+            ipc::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running 0spof desktop application");

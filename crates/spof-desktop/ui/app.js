@@ -865,10 +865,25 @@ async function checkForUpdates({ silent = true } = {}) {
 const btnDownloadUpdate = document.getElementById("btn-download-update");
 if (btnDownloadUpdate) {
   btnDownloadUpdate.addEventListener("click", async () => {
+    const labelEl = btnDownloadUpdate.querySelector("span");
+    const originalText = labelEl ? labelEl.innerText : "Baixar atualização";
+    btnDownloadUpdate.disabled = true;
+    if (labelEl) labelEl.innerText = "Instalando atualização...";
+
     try {
-      await invoke("open_target", { target: latestReleaseUrl });
-    } catch (err) {
-      alert("Erro ao abrir página de atualização: " + err);
+      const installed = await invoke("install_update");
+      if (!installed) {
+        await invoke("open_target", { target: latestReleaseUrl });
+      }
+    } catch (_) {
+      try {
+        await invoke("open_target", { target: latestReleaseUrl });
+      } catch (openErr) {
+        alert("Erro ao abrir página de atualização: " + openErr);
+      }
+    } finally {
+      btnDownloadUpdate.disabled = false;
+      if (labelEl) labelEl.innerText = originalText;
     }
   });
 }
