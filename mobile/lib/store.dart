@@ -3,9 +3,11 @@ import 'dart:convert';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'models.dart';
+import 'native_cookies.dart';
 import 'src/rust/api/spof.dart' as rust;
 
 /// Estado do app: lê do banco local (via bridge) e notifica as telas.
@@ -31,6 +33,11 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
   DateTime? pcLastSync;
   String deviceName = 'Celular';
   Timer? _timer;
+  final _secure = const FlutterSecureStorage();
+
+  static const defaultMoodleUrl = 'https://moodle2.jcr.ifsp.edu.br';
+  static const _kBaseUrl = 'moodle_base_url';
+  static const _kCookie = 'moodle_session';
 
   Future<void> init() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -40,6 +47,7 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
       final a = await DeviceInfoPlugin().androidInfo;
       deviceName = '${a.manufacturer} ${a.model}'.trim();
     } catch (_) {}
+    await _restoreSession();
     await refresh();
     WidgetsBinding.instance.addObserver(this);
     _timer = Timer.periodic(const Duration(minutes: 1), (_) => syncPc(silent: true));
@@ -56,6 +64,39 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
     _timer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// O cookie fica cifrado no Keystore do Android; o Rust só o mantém em memória.
+  Future<void> _restoreSession() async {
+    try {
+      final url = await _secure.read(key: _kBaseUrl);
+      final cookie = await _secure.read(key: _kCookie);
+      if (url != null && cookie != null) {
+        await rust.saveSession(baseUrl: url, sessionCookie: cookie);
+      }
+    } catch (_) {
+      // Keystore indisponível: o usuário só precisa entrar de novo.
+    }
+  }
+
+  Future<String> savedMoodleUrl() async =>
+      (await _secure.read(key: _kBaseUrl)) ?? session.baseUrl ?? defaultMoodleUrl;
+
+  /// Chamado pelo WebView de login ao capturar o cookie `MoodleSession`. Já dispara o crawl.
+  Future<void> loginMoodle(String baseUrl, String cookie) async {
+    final info = SessionInfo.parse(await rust.saveSession(baseUrl: baseUrl, sessionCookie: cookie));
+    await _secure.write(key: _kBaseUrl, value: info.baseUrl ?? baseUrl);
+    await _secure.write(key: _kCookie, value: cookie);
+    await refresh();
+    unawaited(syncMoodle());
+  }
+
+  Future<void> logoutMoodle() async {
+    await rust.logout();
+    await _secure.delete(key: _kCookie);
+    await NativeCookies.clear();
+    lastSyncMessage = null;
+    await refresh();
   }
 
   Future<void> _loadPeer() async {

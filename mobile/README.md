@@ -13,7 +13,7 @@ Disciplinas, materiais, prazos e fila de entregas no celular, com banco SQLite p
 |---|---|---|
 | 1 | Ponte Rust, app Flutter, telas de leitura (prazos, disciplinas, entregas, ajustes) | feita |
 | 2 | Sincronização com o PC na rede de casa (servidor no núcleo/desktop, QR, cliente no celular) | feita |
-| 3 | Login próprio no Moodle (WebView) e crawl local | pendente |
+| 3 | Login próprio no Moodle (WebView) e crawl local | feita |
 | 4 | Entrega de arquivos (outbox/RFC 3161), download de mídia, exportar/importar, atualização automática e APK no release | pendente |
 
 ## Desenvolvimento

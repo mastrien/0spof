@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'models.dart';
+import 'login_page.dart';
 import 'pair_page.dart';
 import 'store.dart';
 import 'theme.dart';
@@ -292,8 +293,14 @@ class SettingsPage extends StatelessWidget {
         Card(
           child: ListTile(
             leading: Icon(store.session.authenticated ? Icons.link : Icons.link_off, color: store.session.authenticated ? Colors.green : muted),
-            title: Text(store.session.authenticated ? 'Conectado ao Moodle' : 'Sem sessão no Moodle'),
-            subtitle: Text(store.session.baseUrl ?? 'O login próprio no Moodle chega na próxima fase.'),
+            title: Text(store.session.authenticated ? 'Conectado ao Moodle' : 'Entrar no Moodle'),
+            subtitle: Text(store.session.baseUrl ?? 'Login institucional (SUAP / Moodle) direto no celular.'),
+            trailing: store.session.authenticated
+                ? TextButton(onPressed: store.logoutMoodle, child: const Text('Sair'))
+                : const Icon(Icons.login),
+            onTap: store.session.authenticated
+                ? null
+                : () => Navigator.push(context, MaterialPageRoute(builder: (_) => LoginPage(store: store))),
           ),
         ),
         const SizedBox(height: 10),
