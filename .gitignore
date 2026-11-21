@@ -33,3 +33,6 @@ mobile/.dart_tool/
 mobile/android/key.properties
 mobile/android/local.properties
 mobile/rust_builder/cargokit/build_tool/.dart_tool/
+mobile/android/build/
+mobile/android/.gradle/
+mobile/android/.kotlin/
