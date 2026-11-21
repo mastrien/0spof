@@ -26,3 +26,10 @@ Cargo.lock
 Thumbs.db
 [Dd]esktop.ini
 .DS_Store
+
+# Mobile (Flutter)
+mobile/build/
+mobile/.dart_tool/
+mobile/android/key.properties
+mobile/android/local.properties
+mobile/rust_builder/cargokit/build_tool/.dart_tool/
