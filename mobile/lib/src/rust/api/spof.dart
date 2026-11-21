@@ -77,3 +77,16 @@ Future<String> importData({required String jsonContent}) =>
     RustLib.instance.api.crateApiSpofImportData(jsonContent: jsonContent);
 
 Future<void> wipeAllData() => RustLib.instance.api.crateApiSpofWipeAllData();
+
+/// Pareia com o PC a partir do conteúdo do QR code e já sincroniza. Devolve o `SyncResult` em JSON.
+Future<String> pair({required String code, required String device}) =>
+    RustLib.instance.api.crateApiSpofPair(code: code, device: device);
+
+/// Recebe o snapshot do PC e envia o do celular. Devolve o `SyncResult` em JSON.
+Future<String> syncPeer({required String device}) =>
+    RustLib.instance.api.crateApiSpofSyncPeer(device: device);
+
+/// PC pareado (`{name, host, port}`) ou `null`. O token nunca sai do Rust.
+Future<String> peerInfo() => RustLib.instance.api.crateApiSpofPeerInfo();
+
+Future<void> unpair() => RustLib.instance.api.crateApiSpofUnpair();

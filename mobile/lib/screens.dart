@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'models.dart';
+import 'pair_page.dart';
 import 'store.dart';
 import 'theme.dart';
 
@@ -101,7 +102,10 @@ class DeadlinesPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = store.deadlines;
     return RefreshIndicator(
-      onRefresh: store.refresh,
+      onRefresh: () async {
+        await store.syncPc();
+        await store.refresh();
+      },
       child: items.isEmpty
           ? _empty(Icons.event_available, 'Nenhum prazo pela frente.\nSincronize para trazer as atividades.')
           : ListView.separated(
@@ -134,7 +138,10 @@ class CoursesPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = store.courses;
     return RefreshIndicator(
-      onRefresh: store.refresh,
+      onRefresh: () async {
+        await store.syncPc();
+        await store.refresh();
+      },
       child: items.isEmpty
           ? _empty(Icons.school_outlined, 'Nenhuma disciplina no banco local.')
           : ListView.separated(
@@ -246,7 +253,10 @@ class OutboxPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = store.outbox;
     return RefreshIndicator(
-      onRefresh: store.refresh,
+      onRefresh: () async {
+        await store.syncPc();
+        await store.refresh();
+      },
       child: items.isEmpty
           ? _empty(Icons.outbox_outlined, 'Nenhuma entrega na fila.')
           : ListView.separated(
@@ -283,7 +293,34 @@ class SettingsPage extends StatelessWidget {
           child: ListTile(
             leading: Icon(store.session.authenticated ? Icons.link : Icons.link_off, color: store.session.authenticated ? Colors.green : muted),
             title: Text(store.session.authenticated ? 'Conectado ao Moodle' : 'Sem sessão no Moodle'),
-            subtitle: Text(store.session.baseUrl ?? 'O login próprio e o pareamento com o PC chegam nas próximas fases.'),
+            subtitle: Text(store.session.baseUrl ?? 'O login próprio no Moodle chega na próxima fase.'),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Card(
+          child: ListTile(
+            leading: Icon(store.peer != null ? Icons.computer : Icons.computer_outlined, color: store.peer != null ? Colors.green : muted),
+            title: Text(store.peer != null ? 'Pareado com ${store.peer!.name.isEmpty ? store.peer!.host : store.peer!.name}' : 'Parear com o PC'),
+            subtitle: Text(store.peer == null
+                ? 'Leia o QR code do app desktop (Ajustes) na rede de casa.'
+                : store.pcSyncError ??
+                    (store.pcSyncing
+                        ? 'Sincronizando…'
+                        : store.pcLastSync == null
+                            ? '${store.peer!.host}:${store.peer!.port}'
+                            : 'Última sincronização: ${fmtDue(store.pcLastSync!).split(' · ').first}')),
+            trailing: store.peer == null
+                ? const Icon(Icons.qr_code_scanner)
+                : PopupMenuButton<String>(
+                    onSelected: (v) => v == 'sync' ? store.syncPc() : store.unpairPc(),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'sync', child: Text('Sincronizar agora')),
+                      PopupMenuItem(value: 'unpair', child: Text('Desparear')),
+                    ],
+                  ),
+            onTap: store.peer == null
+                ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => PairPage(store: store)))
+                : null,
           ),
         ),
         const SizedBox(height: 10),
