@@ -338,6 +338,28 @@
 
           <div id="data-management-result" class="result-message" style="display:none;margin-top:14px;"></div>
         </div>
+        <div class="content-box form-card" id="sync-card" style="margin-top:18px;">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Celular</p>
+              <h2>Sincronização com o app do celular</h2>
+              <p class="section-description">Leia o QR code no app do 0spof (Ajustes &rarr; Parear com o PC). Funciona só na rede de casa: o tráfego é HTTP protegido por token, então não exponha a porta na internet.</p>
+            </div>
+          </div>
+          <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;">
+            <div id="sync-qr" style="width:220px;height:220px;background:#fff;border-radius:12px;border:1px solid var(--line);"></div>
+            <div style="flex:1;min-width:260px;">
+              <p id="sync-status" style="font-weight:600;margin-bottom:6px;"></p>
+              <p id="sync-address" style="color:var(--muted);font-size:13px;margin-bottom:12px;"></p>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button id="btn-sync-toggle" class="btn btn-secondary" type="button"><span>Desligar</span></button>
+                <button id="btn-sync-rotate" class="btn btn-secondary" type="button"><span>Gerar novo código</span></button>
+                <button id="btn-sync-copy" class="btn btn-secondary" type="button"><span>Copiar código</span></button>
+              </div>
+              <small style="display:block;margin-top:10px;color:var(--muted);">Gerar novo código desconecta todos os celulares pareados. No primeiro uso, o Windows pede para liberar o firewall em redes privadas.</small>
+            </div>
+          </div>
+        </div>
       </section>
       <div id="proof-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="proof-title">
         <div class="modal-content">

@@ -4,6 +4,7 @@ pub use spof_core::api::dto;
 pub mod data_commands;
 
 pub mod ipc;
+pub mod sync_commands;
 
 pub use commands::AppState;
 use spof_core::storage::Database;
@@ -72,6 +73,7 @@ pub fn run() {
         Database::open(&db_path).expect("Failed to initialize SQLite database for 0spof desktop");
     let state = AppState::new(db);
     try_load_dotenv_session(&state);
+    let _ = sync_commands::handle_start_sync_server(&state);
     let app_state = Arc::new(state);
 
     tauri::Builder::default()
@@ -100,6 +102,10 @@ pub fn run() {
             ipc::get_app_version,
             ipc::check_for_updates,
             ipc::install_update,
+            ipc::get_sync_info,
+            ipc::start_sync_server,
+            ipc::stop_sync_server,
+            ipc::rotate_sync_token,
         ])
         .run(tauri::generate_context!())
         .expect("error while running 0spof desktop application");

@@ -5,12 +5,14 @@ use crate::dto::{
 use spof_core::api;
 use spof_core::auth::MoodleSession;
 use spof_core::storage::Database;
+use spof_core::sync::server::ServerHandle;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: Database,
     pub session: Arc<Mutex<Option<MoodleSession>>>,
+    pub sync_server: Arc<Mutex<Option<ServerHandle>>>,
 }
 
 impl AppState {
@@ -18,6 +20,7 @@ impl AppState {
         Self {
             db,
             session: Arc::new(Mutex::new(None)),
+            sync_server: Arc::new(Mutex::new(None)),
         }
     }
 }
