@@ -36,6 +36,11 @@ pub(crate) fn initialize_schema(connection: &Connection) -> Result<()> {
             is_submitted INTEGER NOT NULL DEFAULT 0
         );
 
+        CREATE TABLE IF NOT EXISTS app_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS outbox_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             assign_id INTEGER NOT NULL,
