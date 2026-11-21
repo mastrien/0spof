@@ -1,0 +1,19 @@
+[package]
+# O nome é referenciado pelo cargokit em ../rust_builder; não renomear sem ajustar lá.
+name = "spof_mobile"
+description = "0spof: ponte entre o app Flutter e o spof-core"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+spof-core = { path = "../../crates/spof-core" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+flutter_rust_bridge = "=2.13.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
