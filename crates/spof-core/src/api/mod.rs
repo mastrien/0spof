@@ -54,13 +54,20 @@ pub fn upcoming_deadlines(database: &Database) -> Result<Vec<UpcomingDeadlineDto
 
 pub fn courses(database: &Database) -> Result<Vec<CourseDto>, String> {
     let courses = database.get_courses().map_err(err)?;
+    let now = chrono::Utc::now();
     Ok(courses
         .into_iter()
         .map(|course| {
             let sections = database
                 .get_sections_by_course(course.id)
                 .unwrap_or_default();
-            let activities_count = sections.iter().map(|s| s.activities.len()).sum();
+            let activities = sections.iter().flat_map(|s| s.activities.iter());
+            let activities_count = activities.clone().count();
+            let pending: Vec<_> = activities
+                .filter(|a| !a.is_submitted)
+                .filter_map(|a| a.due_date)
+                .filter(|due| *due >= now)
+                .collect();
             CourseDto {
                 id: course.id,
                 fullname: course.fullname,
@@ -68,6 +75,9 @@ pub fn courses(database: &Database) -> Result<Vec<CourseDto>, String> {
                 sections_count: sections.len(),
                 activities_count,
                 is_muted: course.is_muted,
+                pending_deadlines: pending.len(),
+                next_deadline: pending.iter().min().map(|d| d.to_rfc3339()),
+                last_synced_at: course.last_synced_at.map(|d| d.to_rfc3339()),
             }
         })
         .collect())
@@ -215,4 +225,64 @@ pub fn import_data(database: &Database, json: &str) -> Result<dto::ImportSummary
         activities_imported: s.activities_imported,
         outbox_items_imported: s.outbox_items_imported,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{Activity, ActivityType, Course, Section};
+    use chrono::{Duration, Utc};
+
+    fn activity(id: i64, due: Option<chrono::DateTime<Utc>>, submitted: bool) -> Activity {
+        Activity {
+            id,
+            section_id: 10,
+            title: format!("A{id}"),
+            activity_type: ActivityType::Assign,
+            url: None,
+            description: None,
+            local_file_path: None,
+            content_mime: None,
+            due_date: due,
+            is_submitted: submitted,
+        }
+    }
+
+    #[test]
+    fn courses_report_pending_deadlines_and_next_one() {
+        let db = Database::open_in_memory().unwrap();
+        let synced = Utc::now() - Duration::hours(2);
+        db.upsert_course(&Course {
+            id: 1,
+            fullname: "Cálculo".into(),
+            shortname: "CALC".into(),
+            summary: None,
+            last_synced_at: Some(synced),
+            is_muted: false,
+        })
+        .unwrap();
+        db.upsert_section(&Section {
+            id: 10,
+            course_id: 1,
+            name: "S".into(),
+            summary: None,
+            activities: vec![],
+        })
+        .unwrap();
+        let soon = Utc::now() + Duration::days(1);
+        let later = Utc::now() + Duration::days(5);
+        db.upsert_activity(&activity(1, Some(later), false))
+            .unwrap();
+        db.upsert_activity(&activity(2, Some(soon), false)).unwrap();
+        db.upsert_activity(&activity(3, Some(soon), true)).unwrap(); // entregue
+        db.upsert_activity(&activity(4, Some(Utc::now() - Duration::days(1)), false))
+            .unwrap(); // passou
+        db.upsert_activity(&activity(5, None, false)).unwrap();
+
+        let c = &courses(&db).unwrap()[0];
+        assert_eq!(c.activities_count, 5);
+        assert_eq!(c.pending_deadlines, 2);
+        assert_eq!(c.next_deadline.as_deref(), Some(soon.to_rfc3339().as_str()));
+        assert!(c.last_synced_at.is_some());
+    }
 }
