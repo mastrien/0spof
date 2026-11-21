@@ -25,15 +25,36 @@ fn net<E: std::fmt::Display>(e: E) -> SpofError {
     SpofError::Network(format!("Falha ao falar com o PC: {e}"))
 }
 
-async fn get_snapshot(client: &reqwest::Client, p: &Pairing) -> Result<Snapshot> {
+async fn get_snapshot_at(client: &reqwest::Client, p: &Pairing, host: &str) -> Result<Snapshot> {
     let resp = client
-        .get(format!("{}/sync/snapshot", p.base_url()))
+        .get(format!("{}/sync/snapshot", p.base_url_for(host)))
         .bearer_auth(&p.token)
         .send()
         .await
         .map_err(net)?;
     check(&resp)?;
     resp.json().await.map_err(net)
+}
+
+/// Tenta cada IP do PC em ordem e devolve o snapshot e o IP que respondeu.
+/// Token recusado encerra na hora: outro IP não resolveria.
+async fn get_snapshot(client: &reqwest::Client, p: &Pairing) -> Result<(Snapshot, String)> {
+    let mut last = None;
+    for host in p.hosts() {
+        match get_snapshot_at(client, p, &host).await {
+            Ok(snap) => return Ok((snap, host)),
+            Err(e @ SpofError::Authentication(_)) => return Err(e),
+            Err(e) => last = Some(e),
+        }
+    }
+    Err(match last {
+        Some(SpofError::Network(_)) => SpofError::Network(format!(
+            "O PC não respondeu em {}. Confira se o app desktop está aberto e se o celular              está no mesmo Wi-Fi do PC.",
+            p.hosts().join(", ")
+        )),
+        Some(e) => e,
+        None => SpofError::Validation("Pareamento sem endereço".into()),
+    })
 }
 
 fn check(resp: &reqwest::Response) -> Result<()> {
@@ -63,8 +84,9 @@ impl Database {
 /// Confere o servidor (baixa o snapshot) e só então guarda o pareamento.
 pub async fn pair(db: &Database, pairing: &Pairing, device: &str) -> Result<SyncResult> {
     let client = http()?;
-    get_snapshot(&client, pairing).await?; // valida host e token antes de persistir
-    db.meta_set(PEER_KEY, &pairing.to_json())?;
+    // Valida endereço e token antes de persistir; guarda primeiro o IP que respondeu.
+    let (_, host) = get_snapshot(&client, pairing).await?;
+    db.meta_set(PEER_KEY, &pairing.with_primary(&host).to_json())?;
     sync_now(db, device).await
 }
 
@@ -75,12 +97,16 @@ pub async fn sync_now(db: &Database, device: &str) -> Result<SyncResult> {
         .ok_or_else(|| SpofError::Validation("Nenhum PC pareado".into()))?;
     let client = http()?;
 
-    let remote = get_snapshot(&client, &peer).await?;
+    let (remote, host) = get_snapshot(&client, &peer).await?;
+    if host != peer.host {
+        // O PC respondeu por outro IP: ele passa a ser o primeiro a ser tentado.
+        db.meta_set(PEER_KEY, &peer.with_primary(&host).to_json())?;
+    }
     let received = db.apply_snapshot(&remote)?;
 
     let local = db.sync_snapshot(device)?;
     let resp = client
-        .post(format!("{}/sync/snapshot", peer.base_url()))
+        .post(format!("{}/sync/snapshot", peer.base_url_for(&host)))
         .bearer_auth(&peer.token)
         .json(&local)
         .send()

@@ -161,19 +161,60 @@ pub fn start(db: Database, port: u16) -> Result<ServerHandle> {
     })
 }
 
-/// IP local preferido para o celular alcançar este PC.
+/// IP que o Windows/Linux usaria para sair pela rota padrão (a rede de casa, em geral).
+/// `connect` em UDP só consulta a tabela de rotas: nenhum pacote é enviado.
+fn default_route_ip() -> Option<std::net::IpAddr> {
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("8.8.8.8:80").ok()?;
+    let ip = socket.local_addr().ok()?.ip();
+    (!ip.is_loopback() && !ip.is_unspecified()).then_some(ip)
+}
+
+fn is_lan(ip: &std::net::IpAddr) -> bool {
+    matches!(ip, std::net::IpAddr::V4(v4) if v4.is_private())
+}
+
+/// IPs pelos quais o celular pode alcançar este PC, do mais provável para o menos.
+/// Primeiro o da rota padrão (se for de rede privada); depois os outros IPv4 privados.
+/// Adaptadores de VPN (ex.: Radmin, 26.x) e link-local ficam de fora.
+pub fn lan_hosts() -> Vec<String> {
+    let route = default_route_ip();
+    let mut ips: Vec<std::net::IpAddr> = Vec::new();
+    if let Some(ip) = route.filter(is_lan) {
+        ips.push(ip);
+    }
+    if let Ok(list) = local_ip_address::list_afinet_netifas() {
+        for (_, ip) in list {
+            if is_lan(&ip) && !ips.contains(&ip) {
+                ips.push(ip);
+            }
+        }
+    }
+    if ips.is_empty() {
+        ips.extend(route.or_else(|| local_ip_address::local_ip().ok()));
+    }
+    let hosts: Vec<String> = ips.iter().map(|ip| ip.to_string()).collect();
+    if hosts.is_empty() {
+        vec!["127.0.0.1".into()]
+    } else {
+        hosts
+    }
+}
+
+/// IP principal para o celular alcançar este PC.
 pub fn local_host() -> String {
-    local_ip_address::local_ip()
-        .map(|ip| ip.to_string())
-        .unwrap_or_else(|_| "127.0.0.1".into())
+    lan_hosts().remove(0)
 }
 
 pub fn pairing_for(db: &Database, port: u16) -> Result<Pairing> {
+    let mut hosts = lan_hosts();
+    let host = hosts.remove(0);
     Ok(Pairing {
-        host: local_host(),
+        host,
         port,
         token: server_token(db)?,
         name: device_name(),
+        alt_hosts: hosts,
     })
 }
 
@@ -265,10 +306,36 @@ mod tests {
         assert!(client::pair(&other, &bad, "X").await.is_err());
         assert!(other.paired_peer().unwrap().is_none());
 
+        // QR com o IP principal inalcançável (ex.: VPN): cai no alternativo e o promove.
+        let phone2 = Database::open_in_memory().unwrap();
+        let via_alt = Pairing {
+            host: "pc-inexistente.invalid".into(),
+            alt_hosts: vec!["127.0.0.1".into()],
+            ..pairing.clone()
+        };
+        client::pair(&phone2, &via_alt, "Pixel 2").await.unwrap();
+        assert_eq!(phone2.paired_peer().unwrap().unwrap().host, "127.0.0.1");
+        assert_eq!(phone2.get_courses().unwrap().len(), 2);
+
         // Após rotacionar o token, o celular pareado é recusado.
         rotate_token(&pc).unwrap();
         assert!(client::sync_now(&phone, "Pixel").await.is_err());
         handle.stop();
+    }
+
+    #[test]
+    fn lan_hosts_are_private_ipv4_and_unique() {
+        let hosts = lan_hosts();
+        assert!(!hosts.is_empty());
+        let mut seen = std::collections::HashSet::new();
+        for h in &hosts {
+            assert!(seen.insert(h), "IP repetido: {h}");
+            let ip: std::net::IpAddr = h.parse().unwrap();
+            assert!(
+                is_lan(&ip) || hosts.len() == 1,
+                "IP fora da rede local: {h}"
+            );
+        }
     }
 
     #[test]
@@ -278,6 +345,7 @@ mod tests {
             port: 7378,
             token: "t".into(),
             name: "PC".into(),
+            alt_hosts: vec!["10.0.0.2".into()],
         };
         assert!(pairing_qr_svg(&p).unwrap().contains("<svg"));
     }
