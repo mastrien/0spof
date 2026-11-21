@@ -17,6 +17,14 @@ pub struct CourseDto {
     pub sections_count: usize,
     pub activities_count: usize,
     pub is_muted: bool,
+    /// Atividades com prazo futuro ainda não entregues.
+    #[serde(default)]
+    pub pending_deadlines: usize,
+    /// Prazo pendente mais próximo (RFC 3339).
+    #[serde(default)]
+    pub next_deadline: Option<String>,
+    #[serde(default)]
+    pub last_synced_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
