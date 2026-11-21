@@ -1,12 +1,10 @@
 use crate::dto::{
-    ActivityDto, CourseDto, EnqueueResultDto, OutboxItemDto, ProofDto, SectionDto, SessionInfoDto,
+    CourseDto, EnqueueResultDto, OutboxItemDto, ProofDto, SectionDto, SessionInfoDto,
     SyncSummaryDto, SystemStatusDto, UpcomingDeadlineDto,
 };
-use spof_core::auth::{MoodleClient, MoodleSession};
-use spof_core::crawler::CourseCrawler;
-use spof_core::outbox::OutboxEngine;
+use spof_core::api;
+use spof_core::auth::MoodleSession;
 use spof_core::storage::Database;
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -25,68 +23,17 @@ impl AppState {
 }
 
 pub fn handle_get_system_status(database: &Database) -> Result<SystemStatusDto, String> {
-    let courses = database.get_courses().map_err(|e| e.to_string())?;
-    let deadlines = database
-        .get_upcoming_deadlines()
-        .map_err(|e| e.to_string())?;
-    let pending_items = database
-        .get_pending_outbox_items()
-        .map_err(|e| e.to_string())?;
-
-    let muted_courses_count = courses.iter().filter(|c| c.is_muted).count();
-    let active_courses_count = courses.len() - muted_courses_count;
-
-    Ok(SystemStatusDto {
-        courses_count: courses.len(),
-        active_courses_count,
-        muted_courses_count,
-        deadlines_count: deadlines.len(),
-        outbox_count: pending_items.len(),
-    })
+    api::system_status(database)
 }
 
 pub fn handle_get_upcoming_deadlines(
     database: &Database,
 ) -> Result<Vec<UpcomingDeadlineDto>, String> {
-    let deadlines = database
-        .get_upcoming_deadlines()
-        .map_err(|e| e.to_string())?;
-    Ok(deadlines
-        .into_iter()
-        .map(|act| UpcomingDeadlineDto {
-            id: act.id,
-            section_id: act.section_id,
-            title: act.title,
-            activity_type: act.activity_type.as_str().to_string(),
-            url: act.url,
-            due_date: act.due_date.map(|dt| dt.to_rfc3339()),
-            is_submitted: act.is_submitted,
-        })
-        .collect())
+    api::upcoming_deadlines(database)
 }
 
 pub fn handle_get_courses(database: &Database) -> Result<Vec<CourseDto>, String> {
-    let courses = database.get_courses().map_err(|e| e.to_string())?;
-    Ok(courses
-        .into_iter()
-        .map(|course| {
-            let sections = database
-                .get_sections_by_course(course.id)
-                .unwrap_or_default();
-            let activities_count = sections
-                .iter()
-                .map(|section| section.activities.len())
-                .sum();
-            CourseDto {
-                id: course.id,
-                fullname: course.fullname,
-                shortname: course.shortname,
-                sections_count: sections.len(),
-                activities_count,
-                is_muted: course.is_muted,
-            }
-        })
-        .collect())
+    api::courses(database)
 }
 
 pub fn handle_set_course_muted(
@@ -94,61 +41,18 @@ pub fn handle_set_course_muted(
     course_id: i64,
     is_muted: bool,
 ) -> Result<(), String> {
-    database
-        .set_course_muted(course_id, is_muted)
-        .map_err(|e| e.to_string())
+    api::set_course_muted(database, course_id, is_muted)
 }
 
 pub fn handle_get_course_details(
     database: &Database,
     course_id: i64,
 ) -> Result<Vec<SectionDto>, String> {
-    let sections = database
-        .get_sections_by_course(course_id)
-        .map_err(|e| e.to_string())?;
-    Ok(sections
-        .into_iter()
-        .map(|sec| SectionDto {
-            id: sec.id,
-            course_id: sec.course_id,
-            name: sec.name,
-            summary: sec.summary,
-            activities: sec
-                .activities
-                .into_iter()
-                .map(|act| ActivityDto {
-                    id: act.id,
-                    section_id: act.section_id,
-                    title: act.title,
-                    activity_type: act.activity_type.as_str().to_string(),
-                    url: act.url,
-                    description: act.description,
-                    local_file_path: act.local_file_path,
-                    content_mime: act.content_mime,
-                    due_date: act.due_date.map(|dt| dt.to_rfc3339()),
-                    is_submitted: act.is_submitted,
-                })
-                .collect(),
-        })
-        .collect())
+    api::course_details(database, course_id)
 }
 
 pub fn handle_get_outbox_items(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
-    let items = database
-        .get_pending_outbox_items()
-        .map_err(|e| e.to_string())?;
-    Ok(items
-        .into_iter()
-        .map(|item| OutboxItemDto {
-            id: item.id.unwrap_or(0),
-            assign_id: item.assign_id,
-            filename: item.filename,
-            file_hash: item.file_hash,
-            status: item.status.as_str().to_string(),
-            retry_count: item.retry_count,
-            has_rfc3161_token: item.rfc3161_token.is_some(),
-        })
-        .collect())
+    api::outbox_items(database)
 }
 
 pub async fn handle_enqueue_submission(
@@ -157,37 +61,14 @@ pub async fn handle_enqueue_submission(
     file_path: &str,
     fetch_tsa: bool,
 ) -> Result<EnqueueResultDto, String> {
-    let path = Path::new(file_path);
-    let engine = OutboxEngine::new(database.clone());
-    let item = engine
-        .enqueue_file(assign_id, path, fetch_tsa)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(EnqueueResultDto {
-        outbox_id: item.id.unwrap_or(0),
-        file_hash: item.file_hash,
-        has_tsa_token: item.rfc3161_token.is_some(),
-    })
+    api::enqueue_submission(database, assign_id, file_path, fetch_tsa).await
 }
 
 pub fn handle_get_submission_proof(
     database: &Database,
     outbox_id: i64,
 ) -> Result<ProofDto, String> {
-    let engine = OutboxEngine::new(database.clone());
-    let proof = engine
-        .get_submission_proof(outbox_id)
-        .map_err(|e| e.to_string())?;
-
-    let formatted_report = proof.formatted_report();
-
-    Ok(ProofDto {
-        assign_id: proof.assign_id,
-        filename: proof.filename,
-        file_hash: proof.file_hash,
-        formatted_report,
-    })
+    api::submission_proof(database, outbox_id)
 }
 
 pub fn handle_save_session(
@@ -228,31 +109,9 @@ pub fn handle_get_session_info(state: &AppState) -> SessionInfoDto {
 }
 
 pub async fn handle_sync_moodle(state: &AppState) -> Result<SyncSummaryDto, String> {
-    let session_opt = {
-        let guard = state.session.lock().unwrap();
-        guard.clone()
-    };
-
-    let session = session_opt.ok_or_else(|| {
-        "Nenhuma sessão configurada. Configure a conexão nas Configurações.".to_string()
-    })?;
-
-    let client = MoodleClient::new(session.base_url.clone())
-        .map_err(|e| format!("Erro ao criar cliente Moodle: {}", e))?
-        .with_session(session);
-
-    let crawler = CourseCrawler::new(state.db.clone(), client);
-    let sync_result = crawler
-        .sync_all()
-        .await
-        .map_err(|e| format!("Falha na sincronização: {}", e))?;
-
-    Ok(SyncSummaryDto {
-        courses_synced: sync_result.courses_synced,
-        sections_synced: sync_result.sections_synced,
-        activities_synced: sync_result.activities_synced,
-        resources_cached: sync_result.resources_cached,
-    })
+    let session = current_session(state)
+        .ok_or_else(|| "Nenhuma sessão configurada. Configure a conexão nas Configurações.".to_string())?;
+    api::sync_moodle(&state.db, session).await
 }
 
 pub async fn handle_download_activity_media(
@@ -260,20 +119,13 @@ pub async fn handle_download_activity_media(
     activity_id: i64,
     allow_video: bool,
 ) -> Result<String, String> {
-    let session_opt = {
-        let guard = state.session.lock().unwrap();
-        guard.clone()
-    };
-    let session =
-        session_opt.ok_or_else(|| "Sessão Moodle não configurada para download.".to_string())?;
-    let client = MoodleClient::new(session.base_url.clone())
-        .map_err(|e| e.to_string())?
-        .with_session(session);
-    let crawler = CourseCrawler::new(state.db.clone(), client);
-    crawler
-        .download_activity(activity_id, allow_video)
-        .await
-        .map_err(|e| e.to_string())
+    let session = current_session(state)
+        .ok_or_else(|| "Sessão Moodle não configurada para download.".to_string())?;
+    api::download_activity_media(&state.db, session, activity_id, allow_video).await
+}
+
+fn current_session(state: &AppState) -> Option<MoodleSession> {
+    state.session.lock().unwrap().clone()
 }
 
 pub fn handle_open_target(target: &str) -> Result<(), String> {

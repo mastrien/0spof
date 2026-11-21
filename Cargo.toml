@@ -5,6 +5,7 @@ members = [
     "crates/spof-cli",
     "crates/spof-desktop",
     "crates/spof-mcp",
+    "mobile/rust",
 ]
 
 [workspace.package]
