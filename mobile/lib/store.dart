@@ -5,10 +5,12 @@ import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:ota_update/ota_update.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'models.dart';
 import 'native_cookies.dart';
+import 'updater.dart';
 import 'src/rust/api/spof.dart' as rust;
 
 /// Estado do app: lê do banco local (via bridge) e notifica as telas.
@@ -34,6 +36,9 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
   DateTime? pcLastSync;
   String deviceName = 'Celular';
   Timer? _timer;
+  AppUpdate? update;
+  int? updateProgress;
+  String? updateError;
   final _secure = const FlutterSecureStorage();
 
   static const defaultMoodleUrl = 'https://moodle2.jcr.ifsp.edu.br';
@@ -54,6 +59,39 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _timer = Timer.periodic(const Duration(minutes: 1), (_) => syncPc(silent: true));
     unawaited(syncPc(silent: true));
+    unawaited(checkUpdate());
+  }
+
+  Future<void> checkUpdate() async {
+    update = await AppUpdate.check();
+    notifyListeners();
+  }
+
+  /// Baixa o APK (conferindo o sha256) e abre o instalador do sistema.
+  void installUpdate() {
+    final u = update;
+    if (u == null || updateProgress != null) return;
+    updateProgress = 0;
+    updateError = null;
+    notifyListeners();
+    u.install().listen(
+      (e) {
+        if (e.status == OtaStatus.DOWNLOADING) {
+          updateProgress = int.tryParse(e.value ?? '') ?? updateProgress;
+        } else if (e.status == OtaStatus.INSTALLING || e.status == OtaStatus.INSTALLATION_DONE) {
+          updateProgress = null;
+        } else {
+          updateProgress = null;
+          updateError = 'Falha na atualização (${e.status.name})';
+        }
+        notifyListeners();
+      },
+      onError: (Object e) {
+        updateProgress = null;
+        updateError = '$e';
+        notifyListeners();
+      },
+    );
   }
 
   @override
