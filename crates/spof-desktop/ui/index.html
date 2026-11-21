@@ -163,6 +163,26 @@
               <p class="eyebrow">Base local</p>
               <h2>Disciplinas cacheadas (clique para abrir)</h2>
             </div>
+            <span id="courses-count" class="courses-count"></span>
+          </div>
+          <div class="courses-toolbar" role="search">
+            <input type="search" id="courses-search" class="courses-search" placeholder="Buscar por nome ou sigla…" aria-label="Buscar disciplinas">
+            <div class="filter-chips" role="radiogroup" aria-label="Filtrar disciplinas">
+              <button type="button" class="filter-chip" data-filter="all" role="radio">Todas</button>
+              <button type="button" class="filter-chip" data-filter="active" role="radio">Ativas</button>
+              <button type="button" class="filter-chip" data-filter="pending" role="radio">Com prazos</button>
+              <button type="button" class="filter-chip" data-filter="muted" role="radio">Silenciadas</button>
+            </div>
+            <label class="sort-select">
+              <span>Ordenar por</span>
+              <select id="courses-sort">
+                <option value="name">Nome (A–Z)</option>
+                <option value="deadline">Próximo prazo</option>
+                <option value="pending">Mais prazos pendentes</option>
+                <option value="activities">Mais atividades</option>
+                <option value="synced">Sincronizada mais recentemente</option>
+              </select>
+            </label>
           </div>
           <div id="courses-list" class="item-list">Carregando disciplinas…</div>
         </div>
