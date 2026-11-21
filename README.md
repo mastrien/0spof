@@ -21,7 +21,7 @@ O projeto é estruturado como um monorepo Cargo em Rust:
 │   ├── spof-cli/        # Interface de Linha de Comando (CLI)
 │   ├── spof-mcp/        # Servidor MCP para integração com Agentes de IA
 │   └── spof-desktop/    # Aplicação Desktop (Tauri v2)
-└── mobile/              # Aplicação Mobile (Flutter - sincronização local)
+└── mobile/              # App do celular (Flutter + flutter_rust_bridge sobre o spof-core)
 ```
 
 ---
@@ -59,3 +59,39 @@ O `0spof-mcp` permite que agentes de IA (como Claude Desktop, Gemini CLI ou Curs
 - `queue_submission`: Enfileira arquivo para entrega com cálculo de hash SHA-256 e carimbo de tempo RFC 3161 opcional.
 - `get_submission_proof`: Gera dossiê/comprovante criptográfico auditável.
 - `get_outbox_status`: Monitora tarefas na fila de reenvio automático.
+
+---
+
+## 📱 App do celular
+
+O app Android (`mobile/`) usa o mesmo `spof-core` do desktop, via `flutter_rust_bridge`. Ele tem
+banco próprio, funciona offline e obtém os dados de dois jeitos, que se somam:
+
+- **Login próprio:** entra no Moodle pelo WebView e faz o crawl no próprio celular.
+- **Sincronização com o PC:** recebe o que o desktop já baixou, na rede de casa.
+
+Detalhes em [`mobile/README.md`](mobile/README.md).
+
+### Sincronização na rede de casa
+
+O app desktop sobe um servidor (porta 7378) e mostra um QR code em **Configurações**. O celular lê
+o QR uma vez e, depois, sincroniza sozinho. Os ids vêm do Moodle e são iguais nos dois aparelhos,
+então cada lado aplica o snapshot do outro com *upsert*: nada é apagado, `is_muted` continua local
+e o que um lado já sabia (descrição, prazo, "entregue") não é perdido. Caminhos de arquivo e a fila
+de entregas não viajam.
+
+O tráfego é HTTP sem criptografia, protegido por token. Isso basta na rede de casa, mas não
+exponha a porta na internet. "Gerar novo código" troca o token e desconecta todos os celulares.
+
+## 🚀 Releases
+
+```sh
+python scripts/version.py 0.3.0   # Cargo, Tauri e pubspec (com versionCode crescente)
+git commit -am "v0.3.0" && git tag v0.3.0 && git push && git push --tags
+```
+
+O `release.yml` gera o desktop assinado (com `latest.json`), a CLI, o MCP e o APK assinado, e só
+publica quando todos subiram. Secrets do repositório: `TAURI_SIGNING_PRIVATE_KEY`,
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD` e
+`ANDROID_KEY_ALIAS`. As chaves **precisam de backup**: sem a mesma chave, os apps instalados deixam
+de aceitar atualizações.
