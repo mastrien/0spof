@@ -180,3 +180,31 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<bool, String> {
 
     app.restart();
 }
+
+#[tauri::command]
+pub fn get_sync_info(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<crate::sync_commands::SyncInfoDto, String> {
+    crate::sync_commands::handle_get_sync_info(&state)
+}
+
+#[tauri::command]
+pub fn start_sync_server(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<crate::sync_commands::SyncInfoDto, String> {
+    crate::sync_commands::handle_start_sync_server(&state)
+}
+
+#[tauri::command]
+pub fn stop_sync_server(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<crate::sync_commands::SyncInfoDto, String> {
+    crate::sync_commands::handle_stop_sync_server(&state)
+}
+
+#[tauri::command]
+pub fn rotate_sync_token(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<crate::sync_commands::SyncInfoDto, String> {
+    crate::sync_commands::handle_rotate_sync_token(&state)
+}

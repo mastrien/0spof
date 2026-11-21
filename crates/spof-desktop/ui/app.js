@@ -811,6 +811,53 @@ if (btnWipeData) {
   });
 }
 
+
+// Sincronização com o celular (servidor local + QR code)
+let syncInfo = null;
+
+function renderSyncInfo(info) {
+  syncInfo = info;
+  const qr = document.getElementById("sync-qr");
+  const status = document.getElementById("sync-status");
+  const addr = document.getElementById("sync-address");
+  const toggle = document.getElementById("btn-sync-toggle");
+  if (!qr || !status) return;
+  qr.innerHTML = info.running && info.qr_svg ? info.qr_svg : "";
+  status.innerText = info.running ? `Servidor ativo em "${info.device_name}"` : "Servidor desligado";
+  addr.innerText = info.running ? `${info.host}:${info.port}` : "Ligue o servidor para gerar o QR code.";
+  toggle.querySelector("span").innerText = info.running ? "Desligar" : "Ligar";
+}
+
+async function loadSyncInfo() {
+  try {
+    renderSyncInfo(await invoke("get_sync_info"));
+  } catch (err) {
+    console.error("sync info:", err);
+  }
+}
+
+const btnSyncToggle = document.getElementById("btn-sync-toggle");
+if (btnSyncToggle) {
+  btnSyncToggle.addEventListener("click", async () => {
+    try {
+      renderSyncInfo(await invoke(syncInfo && syncInfo.running ? "stop_sync_server" : "start_sync_server"));
+    } catch (err) {
+      alert("Erro no servidor de sincronização: " + err);
+    }
+  });
+  document.getElementById("btn-sync-rotate").addEventListener("click", async () => {
+    try {
+      renderSyncInfo(await invoke("rotate_sync_token"));
+    } catch (err) {
+      alert("Erro ao gerar novo código: " + err);
+    }
+  });
+  document.getElementById("btn-sync-copy").addEventListener("click", () => {
+    if (syncInfo && syncInfo.pairing_code) navigator.clipboard.writeText(syncInfo.pairing_code);
+  });
+  loadSyncInfo();
+}
+
 // Verificação leve de atualizações (GitHub Releases)
 let latestReleaseUrl = "https://github.com/mastrien/0spof/releases";
 
