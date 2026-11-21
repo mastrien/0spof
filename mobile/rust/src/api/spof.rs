@@ -138,3 +138,30 @@ pub fn import_data(json_content: String) -> Res<String> {
 pub fn wipe_all_data() -> Res<()> {
     api::wipe_all_data(db()?)
 }
+
+// ---------- Sincronização com o PC ----------
+
+/// Pareia com o PC a partir do conteúdo do QR code e já sincroniza. Devolve o `SyncResult` em JSON.
+pub fn pair(code: String, device: String) -> Res<String> {
+    let pairing = spof_core::sync::Pairing::from_json(&code).map_err(|e| e.to_string())?;
+    json(&runtime()
+        .block_on(spof_core::sync::client::pair(db()?, &pairing, &device))
+        .map_err(|e| e.to_string())?)
+}
+
+/// Recebe o snapshot do PC e envia o do celular. Devolve o `SyncResult` em JSON.
+pub fn sync_peer(device: String) -> Res<String> {
+    json(&runtime()
+        .block_on(spof_core::sync::client::sync_now(db()?, &device))
+        .map_err(|e| e.to_string())?)
+}
+
+/// PC pareado (`{name, host, port}`) ou `null`. O token nunca sai do Rust.
+pub fn peer_info() -> Res<String> {
+    let peer = db()?.paired_peer().map_err(|e| e.to_string())?;
+    json(&peer.map(|p| serde_json::json!({ "name": p.name, "host": p.host, "port": p.port })))
+}
+
+pub fn unpair() -> Res<()> {
+    db()?.unpair().map_err(|e| e.to_string())
+}
