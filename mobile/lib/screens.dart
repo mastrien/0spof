@@ -108,7 +108,11 @@ class _HomeShellState extends State<HomeShell> {
                 selectedIcon: const Icon(Icons.outbox),
                 label: 'Entregas',
               ),
-              const NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Ajustes'),
+              NavigationDestination(
+                icon: Badge(isLabelVisible: s.update != null, smallSize: 8, child: const Icon(Icons.settings_outlined)),
+                selectedIcon: const Icon(Icons.settings),
+                label: 'Ajustes',
+              ),
             ],
           ),
         );
@@ -317,9 +321,23 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = store.status;
+    final up = store.update;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (up != null) ...[
+          Card(
+            color: blue.withValues(alpha: 0.12),
+            child: ListTile(
+              leading: const Icon(Icons.system_update, color: blue),
+              title: Text('Versão ${up.version} disponível'),
+              subtitle: Text(store.updateError ??
+                  (store.updateProgress != null ? 'Baixando… ${store.updateProgress}%' : 'Toque para baixar e instalar.')),
+              onTap: store.updateProgress == null ? store.installUpdate : null,
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
         Card(
           child: ListTile(
             leading: Icon(store.session.authenticated ? Icons.link : Icons.link_off, color: store.session.authenticated ? Colors.green : muted),
