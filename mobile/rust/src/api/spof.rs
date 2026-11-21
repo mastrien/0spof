@@ -2,6 +2,7 @@
 //! Estruturas compostas viajam como JSON (o Dart tem os modelos em `lib/models.dart`),
 //! para não espelhar cada DTO no bridge.
 
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use spof_core::api::{self, dto::SessionInfoDto};
@@ -12,6 +13,8 @@ use tokio::runtime::Runtime;
 static DB: OnceLock<Database> = OnceLock::new();
 static SESSION: Mutex<Option<MoodleSession>> = Mutex::new(None);
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+/// Materiais baixados: `<pasta do banco>/resources` (o diretório de trabalho do Android não é gravável).
+static CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 type Res<T> = Result<T, String>;
 
@@ -42,6 +45,11 @@ pub fn open_database(path: String) -> Res<()> {
     if DB.get().is_none() {
         let database = Database::open(&path).map_err(|e| e.to_string())?;
         let _ = DB.set(database);
+        let dir = Path::new(&path)
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join("resources");
+        let _ = CACHE_DIR.set(dir);
     }
     Ok(())
 }
@@ -99,9 +107,21 @@ pub fn save_session(base_url: String, session_cookie: String) -> Res<String> {
 
 pub fn session_info() -> Res<String> {
     json(&match session() {
-        Some(s) => SessionInfoDto { is_authenticated: true, base_url: Some(s.base_url) },
-        None => SessionInfoDto { is_authenticated: false, base_url: None },
+        Some(s) => SessionInfoDto {
+            is_authenticated: true,
+            base_url: Some(s.base_url),
+        },
+        None => SessionInfoDto {
+            is_authenticated: false,
+            base_url: None,
+        },
     })
+}
+
+/// Indica que o WebView de login chegou a uma página autenticada do Moodle.
+#[flutter_rust_bridge::frb(sync)]
+pub fn is_authenticated_url(url: String) -> bool {
+    spof_core::auth::is_authenticated_moodle_url(&url)
 }
 
 pub fn logout() -> Res<()> {
@@ -111,18 +131,29 @@ pub fn logout() -> Res<()> {
 
 pub fn sync_moodle() -> Res<String> {
     let s = session().ok_or("Nenhuma sessão configurada. Faça login no Moodle.")?;
-    json(&runtime().block_on(api::sync_moodle(db()?, s))?)
+    json(&runtime().block_on(api::sync_moodle(db()?, s, CACHE_DIR.get().cloned()))?)
 }
 
 pub fn download_activity_media(activity_id: i64, allow_video: bool) -> Res<String> {
     let s = session().ok_or("Sessão Moodle não configurada para download.")?;
-    runtime().block_on(api::download_activity_media(db()?, s, activity_id, allow_video))
+    runtime().block_on(api::download_activity_media(
+        db()?,
+        s,
+        activity_id,
+        allow_video,
+        CACHE_DIR.get().cloned(),
+    ))
 }
 
 // ---------- Entregas (outbox) ----------
 
 pub fn enqueue_submission(assign_id: i64, file_path: String, fetch_tsa: bool) -> Res<String> {
-    json(&runtime().block_on(api::enqueue_submission(db()?, assign_id, &file_path, fetch_tsa))?)
+    json(&runtime().block_on(api::enqueue_submission(
+        db()?,
+        assign_id,
+        &file_path,
+        fetch_tsa,
+    ))?)
 }
 
 // ---------- Dados ----------
@@ -144,16 +175,20 @@ pub fn wipe_all_data() -> Res<()> {
 /// Pareia com o PC a partir do conteúdo do QR code e já sincroniza. Devolve o `SyncResult` em JSON.
 pub fn pair(code: String, device: String) -> Res<String> {
     let pairing = spof_core::sync::Pairing::from_json(&code).map_err(|e| e.to_string())?;
-    json(&runtime()
-        .block_on(spof_core::sync::client::pair(db()?, &pairing, &device))
-        .map_err(|e| e.to_string())?)
+    json(
+        &runtime()
+            .block_on(spof_core::sync::client::pair(db()?, &pairing, &device))
+            .map_err(|e| e.to_string())?,
+    )
 }
 
 /// Recebe o snapshot do PC e envia o do celular. Devolve o `SyncResult` em JSON.
 pub fn sync_peer(device: String) -> Res<String> {
-    json(&runtime()
-        .block_on(spof_core::sync::client::sync_now(db()?, &device))
-        .map_err(|e| e.to_string())?)
+    json(
+        &runtime()
+            .block_on(spof_core::sync::client::sync_now(db()?, &device))
+            .map_err(|e| e.to_string())?,
+    )
 }
 
 /// PC pareado (`{name, host, port}`) ou `null`. O token nunca sai do Rust.

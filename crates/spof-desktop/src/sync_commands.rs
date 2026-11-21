@@ -85,7 +85,10 @@ mod tests {
         assert!(on.running && on.qr_svg.unwrap().contains("<svg"));
         let before = on.pairing_code.unwrap();
 
-        let after = handle_rotate_sync_token(&state).unwrap().pairing_code.unwrap();
+        let after = handle_rotate_sync_token(&state)
+            .unwrap()
+            .pairing_code
+            .unwrap();
         assert_ne!(before, after);
 
         assert!(!handle_stop_sync_server(&state).unwrap().running);

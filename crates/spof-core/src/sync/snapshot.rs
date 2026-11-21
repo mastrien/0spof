@@ -81,8 +81,14 @@ mod tests {
             is_muted: false,
         })
         .unwrap();
-        db.upsert_section(&Section { id: 10, course_id: 1, name: "S1".into(), summary: None, activities: vec![] })
-            .unwrap();
+        db.upsert_section(&Section {
+            id: 10,
+            course_id: 1,
+            name: "S1".into(),
+            summary: None,
+            activities: vec![],
+        })
+        .unwrap();
         db.upsert_activity(&Activity {
             id: 100,
             section_id: 10,
@@ -109,7 +115,12 @@ mod tests {
         let sum = b.apply_snapshot(&snap).unwrap();
         assert_eq!((sum.courses, sum.sections, sum.activities), (1, 1, 1));
         assert_eq!(b.get_activity(100).unwrap().unwrap().title, "Lista 1");
-        assert!(b.get_activity(100).unwrap().unwrap().local_file_path.is_none());
+        assert!(b
+            .get_activity(100)
+            .unwrap()
+            .unwrap()
+            .local_file_path
+            .is_none());
     }
 
     #[test]

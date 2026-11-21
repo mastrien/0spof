@@ -112,9 +112,10 @@ pub fn handle_get_session_info(state: &AppState) -> SessionInfoDto {
 }
 
 pub async fn handle_sync_moodle(state: &AppState) -> Result<SyncSummaryDto, String> {
-    let session = current_session(state)
-        .ok_or_else(|| "Nenhuma sessão configurada. Configure a conexão nas Configurações.".to_string())?;
-    api::sync_moodle(&state.db, session).await
+    let session = current_session(state).ok_or_else(|| {
+        "Nenhuma sessão configurada. Configure a conexão nas Configurações.".to_string()
+    })?;
+    api::sync_moodle(&state.db, session, None).await
 }
 
 pub async fn handle_download_activity_media(
@@ -124,7 +125,7 @@ pub async fn handle_download_activity_media(
 ) -> Result<String, String> {
     let session = current_session(state)
         .ok_or_else(|| "Sessão Moodle não configurada para download.".to_string())?;
-    api::download_activity_media(&state.db, session, activity_id, allow_video).await
+    api::download_activity_media(&state.db, session, activity_id, allow_video, None).await
 }
 
 fn current_session(state: &AppState) -> Option<MoodleSession> {
