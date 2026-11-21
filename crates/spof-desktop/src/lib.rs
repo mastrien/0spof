@@ -1,7 +1,8 @@
 pub mod auth_window;
 pub mod commands;
+pub use spof_core::api::dto;
 pub mod data_commands;
-pub mod dto;
+
 pub mod ipc;
 
 pub use commands::AppState;

@@ -11,28 +11,18 @@ pub fn handle_logout(state: &AppState) -> SessionInfoDto {
 }
 
 pub fn handle_wipe_all_data(state: &AppState) -> Result<(), String> {
-    state.db.wipe_all_data().map_err(|e| e.to_string())
+    spof_core::api::wipe_all_data(&state.db)
 }
 
 pub fn handle_export_data(state: &AppState) -> Result<String, String> {
-    state.db.export_data_json().map_err(|e| e.to_string())
+    spof_core::api::export_data(&state.db)
 }
 
 pub fn handle_import_data(
     state: &AppState,
     json_content: String,
 ) -> Result<ImportSummaryDto, String> {
-    let summary = state
-        .db
-        .import_data_json(&json_content)
-        .map_err(|e| e.to_string())?;
-
-    Ok(ImportSummaryDto {
-        courses_imported: summary.courses_imported,
-        sections_imported: summary.sections_imported,
-        activities_imported: summary.activities_imported,
-        outbox_items_imported: summary.outbox_items_imported,
-    })
+    spof_core::api::import_data(&state.db, &json_content)
 }
 
 pub fn handle_get_app_version() -> String {
