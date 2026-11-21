@@ -42,5 +42,23 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      # A ponte do celular (mobile/rust) é cola gerada pelo flutter_rust_bridge; a lógica fica no
+      # spof-core, que é medido.
       - name: Check Code Coverage Quality Gate (>= 70%)
-        run: cargo llvm-cov --workspace --all-features --fail-under-lines 70
+        run: cargo llvm-cov --workspace --all-features --exclude spof_mobile --fail-under-lines 70
+
+  mobile:
+    name: Mobile (Flutter analyze & test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.0
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test

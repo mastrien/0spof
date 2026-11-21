@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CARGO = ROOT / "Cargo.toml"
 TAURI = ROOT / "crates/spof-desktop/tauri.conf.json"
+PUBSPEC = ROOT / "mobile/pubspec.yaml"
 
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 
@@ -23,10 +24,18 @@ def read_all() -> dict[str, str]:
         CARGO.read_text(encoding="utf-8"),
     )
     tauri = json.loads(TAURI.read_text(encoding="utf-8")).get("version", "?")
+    pubspec = re.search(r"^version:\s*([^+\s]+)", PUBSPEC.read_text(encoding="utf-8"), re.M)
     return {
         "Cargo.toml": cargo.group(1) if cargo else "?",
         "tauri.conf.json": tauri,
+        "pubspec.yaml": pubspec.group(1) if pubspec else "?",
     }
+
+
+def version_code(version: str) -> int:
+    """versionCode do Android: precisa crescer a cada release (0.2.0 -> 200)."""
+    major, minor, patch = (int(p) for p in version.split("."))
+    return major * 10000 + minor * 100 + patch
 
 
 def write_json_version(path: Path, version: str) -> None:
@@ -44,6 +53,15 @@ def write_all(version: str) -> None:
     )
     CARGO.write_text(text, encoding="utf-8")
     write_json_version(TAURI, version)
+    text = PUBSPEC.read_text(encoding="utf-8")
+    text = re.sub(
+        r"^version:.*$",
+        f"version: {version}+{version_code(version)}",
+        text,
+        count=1,
+        flags=re.M,
+    )
+    PUBSPEC.write_text(text, encoding="utf-8")
 
 
 def main(args: list[str]) -> int:
