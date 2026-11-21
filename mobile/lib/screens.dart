@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'activity_actions.dart';
+import 'data_actions.dart';
 import 'login_page.dart';
 import 'pair_page.dart';
 import 'store.dart';
@@ -377,6 +378,8 @@ class SettingsPage extends StatelessWidget {
             onTap: store.syncMoodle,
           ),
         ),
+        const SizedBox(height: 10),
+        DataCard(store: store),
         const SizedBox(height: 24),
         Center(child: Text('0spof ${store.version}', style: const TextStyle(color: muted))),
       ],
