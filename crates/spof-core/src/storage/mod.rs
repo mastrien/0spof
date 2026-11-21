@@ -1,5 +1,6 @@
 mod backup;
 mod courses;
+mod meta;
 mod outbox;
 mod schema;
 

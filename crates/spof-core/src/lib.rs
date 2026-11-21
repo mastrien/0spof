@@ -6,6 +6,7 @@ pub mod error;
 pub mod models;
 pub mod outbox;
 pub mod storage;
+pub mod sync;
 pub mod update;
 
 pub use auth::{MoodleClient, MoodleSession};
