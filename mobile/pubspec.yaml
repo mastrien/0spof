@@ -19,6 +19,8 @@ dependencies:
   device_info_plus: ^13.3.0
   flutter_secure_storage: ^11.2.0
   webview_flutter: ^4.14.1
+  file_picker: ^13.4.0
+  open_filex: ^5.0.0
 
 dev_dependencies:
   flutter_test:
