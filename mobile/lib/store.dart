@@ -181,6 +181,21 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
     return path;
   }
 
+  Future<String> exportData() => rust.exportData();
+
+  /// Devolve um resumo do que foi importado.
+  Future<String> importData(String json) async {
+    final j = jsonDecode(await rust.importData(jsonContent: json));
+    await refresh();
+    return '${j['courses_imported']} disciplinas, ${j['activities_imported']} atividades, '
+        '${j['outbox_items_imported']} entregas';
+  }
+
+  Future<void> wipeAllData() async {
+    await rust.wipeAllData();
+    await refresh();
+  }
+
   Future<List<Section>> courseDetails(int id) async =>
       Section.parseList(await rust.courseDetails(courseId: id));
 
