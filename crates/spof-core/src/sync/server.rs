@@ -54,10 +54,20 @@ pub struct Reply {
 }
 
 fn reply(status: u16, body: impl Into<String>) -> Reply {
-    Reply { status, body: body.into() }
+    Reply {
+        status,
+        body: body.into(),
+    }
 }
 
-pub fn handle(db: &Database, token: &str, method: &str, path: &str, auth: Option<&str>, body: &str) -> Reply {
+pub fn handle(
+    db: &Database,
+    token: &str,
+    method: &str,
+    path: &str,
+    auth: Option<&str>,
+    body: &str,
+) -> Reply {
     if !token_matches(token, auth) {
         return reply(401, r#"{"error":"unauthorized"}"#);
     }
@@ -109,7 +119,11 @@ impl Drop for ServerHandle {
 pub fn start(db: Database, port: u16) -> Result<ServerHandle> {
     let server = tiny_http::Server::http(("0.0.0.0", port))
         .map_err(|e| SpofError::Network(format!("Não foi possível abrir a porta {port}: {e}")))?;
-    let port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(port);
+    let port = server
+        .server_addr()
+        .to_ip()
+        .map(|a| a.port())
+        .unwrap_or(port);
     let stop = Arc::new(AtomicBool::new(false));
     let flag = stop.clone();
     let thread = std::thread::spawn(move || {
@@ -130,20 +144,37 @@ pub fn start(db: Database, port: u16) -> Result<ServerHandle> {
                 Ok(token) => handle(&db, &token, &method, &path, auth.as_deref(), &body),
                 Err(e) => reply(500, e.to_string()),
             };
-            let header = tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap();
-            let _ = req.respond(tiny_http::Response::from_string(out.body).with_status_code(out.status).with_header(header));
+            let header =
+                tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                    .unwrap();
+            let _ = req.respond(
+                tiny_http::Response::from_string(out.body)
+                    .with_status_code(out.status)
+                    .with_header(header),
+            );
         }
     });
-    Ok(ServerHandle { port, stop, thread: Some(thread) })
+    Ok(ServerHandle {
+        port,
+        stop,
+        thread: Some(thread),
+    })
 }
 
 /// IP local preferido para o celular alcançar este PC.
 pub fn local_host() -> String {
-    local_ip_address::local_ip().map(|ip| ip.to_string()).unwrap_or_else(|_| "127.0.0.1".into())
+    local_ip_address::local_ip()
+        .map(|ip| ip.to_string())
+        .unwrap_or_else(|_| "127.0.0.1".into())
 }
 
 pub fn pairing_for(db: &Database, port: u16) -> Result<Pairing> {
-    Ok(Pairing { host: local_host(), port, token: server_token(db)?, name: device_name() })
+    Ok(Pairing {
+        host: local_host(),
+        port,
+        token: server_token(db)?,
+        name: device_name(),
+    })
 }
 
 /// QR code (SVG) com o conteúdo do pareamento.
@@ -164,18 +195,40 @@ mod tests {
     use crate::sync::client;
 
     fn course(db: &Database, id: i64, name: &str) {
-        db.upsert_course(&Course { id, fullname: name.into(), shortname: name.into(), summary: None, last_synced_at: None, is_muted: false })
-            .unwrap();
+        db.upsert_course(&Course {
+            id,
+            fullname: name.into(),
+            shortname: name.into(),
+            summary: None,
+            last_synced_at: None,
+            is_muted: false,
+        })
+        .unwrap();
     }
 
     #[test]
     fn rejects_bad_token_and_unknown_route() {
         let db = Database::open_in_memory().unwrap();
-        assert_eq!(handle(&db, "t", "GET", "/sync/snapshot", None, "").status, 401);
-        assert_eq!(handle(&db, "t", "GET", "/sync/snapshot", Some("Bearer x"), "").status, 401);
-        assert_eq!(handle(&db, "t", "GET", "/nada", Some("Bearer t"), "").status, 404);
-        assert_eq!(handle(&db, "t", "POST", "/sync/snapshot", Some("Bearer t"), "{").status, 400);
-        assert_eq!(handle(&db, "t", "GET", "/sync/snapshot", Some("Bearer t"), "").status, 200);
+        assert_eq!(
+            handle(&db, "t", "GET", "/sync/snapshot", None, "").status,
+            401
+        );
+        assert_eq!(
+            handle(&db, "t", "GET", "/sync/snapshot", Some("Bearer x"), "").status,
+            401
+        );
+        assert_eq!(
+            handle(&db, "t", "GET", "/nada", Some("Bearer t"), "").status,
+            404
+        );
+        assert_eq!(
+            handle(&db, "t", "POST", "/sync/snapshot", Some("Bearer t"), "{").status,
+            400
+        );
+        assert_eq!(
+            handle(&db, "t", "GET", "/sync/snapshot", Some("Bearer t"), "").status,
+            200
+        );
     }
 
     #[test]
@@ -205,7 +258,10 @@ mod tests {
 
         // Token errado não pareia nem grava nada.
         let other = Database::open_in_memory().unwrap();
-        let bad = Pairing { token: "errado".into(), ..pairing.clone() };
+        let bad = Pairing {
+            token: "errado".into(),
+            ..pairing.clone()
+        };
         assert!(client::pair(&other, &bad, "X").await.is_err());
         assert!(other.paired_peer().unwrap().is_none());
 
@@ -217,7 +273,12 @@ mod tests {
 
     #[test]
     fn qr_is_svg() {
-        let p = Pairing { host: "1.2.3.4".into(), port: 7378, token: "t".into(), name: "PC".into() };
+        let p = Pairing {
+            host: "1.2.3.4".into(),
+            port: 7378,
+            token: "t".into(),
+            name: "PC".into(),
+        };
         assert!(pairing_qr_svg(&p).unwrap().contains("<svg"));
     }
 }

@@ -13,7 +13,7 @@ use dto::{
     ActivityDto, CourseDto, EnqueueResultDto, OutboxItemDto, ProofDto, SectionDto, SyncSummaryDto,
     SystemStatusDto, UpcomingDeadlineDto,
 };
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 fn err<E: ToString>(e: E) -> String {
     e.to_string()
@@ -73,11 +73,7 @@ pub fn courses(database: &Database) -> Result<Vec<CourseDto>, String> {
         .collect())
 }
 
-pub fn set_course_muted(
-    database: &Database,
-    course_id: i64,
-    is_muted: bool,
-) -> Result<(), String> {
+pub fn set_course_muted(database: &Database, course_id: i64, is_muted: bool) -> Result<(), String> {
     database.set_course_muted(course_id, is_muted).map_err(err)
 }
 
@@ -157,18 +153,28 @@ pub fn submission_proof(database: &Database, outbox_id: i64) -> Result<ProofDto,
     })
 }
 
-fn crawler_for(database: &Database, session: MoodleSession) -> Result<CourseCrawler, String> {
+/// `cache_dir`: onde gravar os materiais baixados; `None` usa o padrão do desktop.
+fn crawler_for(
+    database: &Database,
+    session: MoodleSession,
+    cache_dir: Option<PathBuf>,
+) -> Result<CourseCrawler, String> {
     let client = MoodleClient::new(session.base_url.clone())
         .map_err(|e| format!("Erro ao criar cliente Moodle: {e}"))?
         .with_session(session);
-    Ok(CourseCrawler::new(database.clone(), client))
+    let crawler = CourseCrawler::new(database.clone(), client);
+    Ok(match cache_dir {
+        Some(dir) => crawler.with_cache_dir(dir),
+        None => crawler,
+    })
 }
 
 pub async fn sync_moodle(
     database: &Database,
     session: MoodleSession,
+    cache_dir: Option<PathBuf>,
 ) -> Result<SyncSummaryDto, String> {
-    let result = crawler_for(database, session)?
+    let result = crawler_for(database, session, cache_dir)?
         .sync_all()
         .await
         .map_err(|e| format!("Falha na sincronização: {e}"))?;
@@ -185,8 +191,9 @@ pub async fn download_activity_media(
     session: MoodleSession,
     activity_id: i64,
     allow_video: bool,
+    cache_dir: Option<PathBuf>,
 ) -> Result<String, String> {
-    crawler_for(database, session)?
+    crawler_for(database, session, cache_dir)?
         .download_activity(activity_id, allow_video)
         .await
         .map_err(err)

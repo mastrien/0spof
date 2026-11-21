@@ -39,14 +39,20 @@ async fn get_snapshot(client: &reqwest::Client, p: &Pairing) -> Result<Snapshot>
 fn check(resp: &reqwest::Response) -> Result<()> {
     match resp.status().as_u16() {
         200..=299 => Ok(()),
-        401 => Err(SpofError::Authentication("Token recusado: pareie de novo com o QR code".into())),
-        s => Err(SpofError::Network(format!("O PC respondeu com erro HTTP {s}"))),
+        401 => Err(SpofError::Authentication(
+            "Token recusado: pareie de novo com o QR code".into(),
+        )),
+        s => Err(SpofError::Network(format!(
+            "O PC respondeu com erro HTTP {s}"
+        ))),
     }
 }
 
 impl Database {
     pub fn paired_peer(&self) -> Result<Option<Pairing>> {
-        Ok(self.meta_get(PEER_KEY)?.and_then(|j| Pairing::from_json(&j).ok()))
+        Ok(self
+            .meta_get(PEER_KEY)?
+            .and_then(|j| Pairing::from_json(&j).ok()))
     }
 
     pub fn unpair(&self) -> Result<()> {
@@ -86,5 +92,9 @@ pub async fn sync_now(db: &Database, device: &str) -> Result<SyncResult> {
         sections: local.sections.len(),
         activities: local.activities.len(),
     };
-    Ok(SyncResult { received, sent, server_name: remote.device })
+    Ok(SyncResult {
+        received,
+        sent,
+        server_name: remote.device,
+    })
 }

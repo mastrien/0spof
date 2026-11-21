@@ -49,6 +49,10 @@ Future<String> saveSession({
 
 Future<String> sessionInfo() => RustLib.instance.api.crateApiSpofSessionInfo();
 
+/// Indica que o WebView de login chegou a uma página autenticada do Moodle.
+bool isAuthenticatedUrl({required String url}) =>
+    RustLib.instance.api.crateApiSpofIsAuthenticatedUrl(url: url);
+
 Future<void> logout() => RustLib.instance.api.crateApiSpofLogout();
 
 Future<String> syncMoodle() => RustLib.instance.api.crateApiSpofSyncMoodle();

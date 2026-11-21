@@ -7,7 +7,11 @@ impl Database {
     pub fn meta_get(&self, key: &str) -> Result<Option<String>> {
         let conn = self.conn.lock().unwrap();
         Ok(conn
-            .query_row("SELECT value FROM app_meta WHERE key = ?1", params![key], |r| r.get(0))
+            .query_row(
+                "SELECT value FROM app_meta WHERE key = ?1",
+                params![key],
+                |r| r.get(0),
+            )
             .optional()?)
     }
 
