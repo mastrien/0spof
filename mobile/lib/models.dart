@@ -113,3 +113,25 @@ class SyncSummary {
         resources = j['resources_cached'];
   static SyncSummary parse(String raw) => SyncSummary.fromJson(jsonDecode(raw));
 }
+
+class EnqueueResult {
+  final int outboxId;
+  final String hash;
+  final bool hasTsaToken;
+  EnqueueResult.fromJson(Map<String, dynamic> j)
+      : outboxId = j['outbox_id'],
+        hash = j['file_hash'],
+        hasTsaToken = j['has_tsa_token'];
+  static EnqueueResult parse(String raw) => EnqueueResult.fromJson(jsonDecode(raw));
+}
+
+class Proof {
+  final int assignId;
+  final String filename, hash, report;
+  Proof.fromJson(Map<String, dynamic> j)
+      : assignId = j['assign_id'],
+        filename = j['filename'],
+        hash = j['file_hash'],
+        report = j['formatted_report'];
+  static Proof parse(String raw) => Proof.fromJson(jsonDecode(raw));
+}

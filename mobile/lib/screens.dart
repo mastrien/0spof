@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import 'models.dart';
+import 'activity_actions.dart';
 import 'login_page.dart';
 import 'pair_page.dart';
 import 'store.dart';
@@ -42,6 +41,34 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _tab = 0;
 
+  /// Escolhe a tarefa (entre as com prazo) e depois o arquivo.
+  Future<void> _newSubmission(BuildContext context, Store s) async {
+    final assigns = s.deadlines.where((d) => d.type == 'assign').toList();
+    if (assigns.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhuma tarefa com prazo. Abra a tarefa pela disciplina.')));
+      return;
+    }
+    final chosen = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheet) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final d in assigns)
+              ListTile(
+                leading: const Icon(Icons.assignment_outlined),
+                title: Text(d.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+                subtitle: d.due == null ? null : Text(fmtDue(d.due!)),
+                onTap: () => Navigator.pop(sheet, d.id),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (chosen != null && context.mounted) await pickAndEnqueue(context, s, chosen);
+  }
+
   static const _titles = ['Prazos', 'Disciplinas', 'Entregas', 'Ajustes'];
 
   @override
@@ -62,6 +89,13 @@ class _HomeShellState extends State<HomeShell> {
             bottom: s.syncing ? const PreferredSize(preferredSize: Size.fromHeight(2), child: LinearProgressIndicator(minHeight: 2)) : null,
           ),
           body: SafeArea(child: pages[_tab]),
+          floatingActionButton: _tab == 2
+              ? FloatingActionButton.extended(
+                  onPressed: () => _newSubmission(context, s),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Nova entrega'),
+                )
+              : null,
           bottomNavigationBar: NavigationBar(
             selectedIndex: _tab,
             onDestinationSelected: (i) => setState(() => _tab = i),
@@ -122,7 +156,7 @@ class DeadlinesPage extends StatelessWidget {
                     title: Text(d.title, maxLines: 2, overflow: TextOverflow.ellipsis),
                     subtitle: d.due == null ? null : Text(fmtDue(d.due!)),
                     trailing: d.submitted ? const Icon(Icons.check_circle, color: Colors.green) : null,
-                    onTap: d.url == null ? null : () => launchUrl(Uri.parse(d.url!), mode: LaunchMode.externalApplication),
+                    onTap: () => showActivityActions(context, store, id: d.id, title: d.title, type: d.type, url: d.url),
                   ),
                 );
               },
@@ -177,18 +211,8 @@ class CourseDetailPage extends StatefulWidget {
 }
 
 class _CourseDetailPageState extends State<CourseDetailPage> {
-  late final Future<List<Section>> _future = widget.store.courseDetails(widget.course.id);
+  late Future<List<Section>> _future = widget.store.courseDetails(widget.course.id);
   late bool _muted = widget.course.muted;
-
-  Future<void> _open(Activity a) async {
-    final target = a.localFilePath ?? a.url;
-    if (target == null) return;
-    final uri = a.localFilePath != null ? Uri.file(a.localFilePath!) : Uri.parse(a.url!);
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não foi possível abrir.')));
-    }
-  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -233,7 +257,11 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                                 : a.submitted
                                     ? const Icon(Icons.check_circle, color: Colors.green)
                                     : null,
-                            onTap: () => _open(a),
+                            onTap: () async {
+                              await showActivityActions(context, widget.store,
+                                  id: a.id, title: a.title, type: a.type, url: a.url, localPath: a.localFilePath);
+                              setState(() => _future = widget.store.courseDetails(widget.course.id));
+                            },
                           ),
                       ],
                     ),
@@ -272,6 +300,7 @@ class OutboxPage extends StatelessWidget {
                     title: Text(o.filename, overflow: TextOverflow.ellipsis),
                     subtitle: Text('${o.status} · tentativas: ${o.retries}\nSHA-256 ${o.hash.substring(0, o.hash.length.clamp(0, 12))}…'),
                     isThreeLine: true,
+                    onTap: () => showProof(context, store, o.id),
                   ),
                 );
               },

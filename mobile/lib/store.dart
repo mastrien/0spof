@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/widgets.dart';
@@ -41,6 +42,7 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> init() async {
     final dir = await getApplicationDocumentsDirectory();
+    _docsDir = dir.path;
     await rust.openDatabase(path: '${dir.path}/0spof.db');
     version = await rust.appVersion();
     try {
@@ -152,6 +154,31 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
       lastError = '$e';
     }
     notifyListeners();
+  }
+
+  late String _docsDir;
+
+  /// Copia o arquivo escolhido para a pasta do app (o seletor devolve um cache temporário),
+  /// calcula o SHA-256 e pede o carimbo RFC 3161 (se `fetchTsa`).
+  Future<EnqueueResult> enqueueSubmission(int assignId, String pickedPath, {bool fetchTsa = true}) async {
+    final dir = Directory('$_docsDir/submissions');
+    await dir.create(recursive: true);
+    final name = pickedPath.split(RegExp(r'[\\/]')).last;
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final dest = await File(pickedPath).copy('${dir.path}/${stamp}_$name');
+    final r = EnqueueResult.parse(
+        await rust.enqueueSubmission(assignId: assignId, filePath: dest.path, fetchTsa: fetchTsa));
+    await refresh();
+    return r;
+  }
+
+  Future<Proof> proof(int outboxId) async => Proof.parse(await rust.submissionProof(outboxId: outboxId));
+
+  /// Baixa o material da atividade para o celular e devolve o caminho local.
+  Future<String> downloadMedia(int activityId, {bool allowVideo = false}) async {
+    final path = await rust.downloadActivityMedia(activityId: activityId, allowVideo: allowVideo);
+    await refresh();
+    return path;
   }
 
   Future<List<Section>> courseDetails(int id) async =>
