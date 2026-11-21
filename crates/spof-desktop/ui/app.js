@@ -169,76 +169,182 @@ async function loadDeadlines() {
 
 let cachedCourses = [];
 
+// Filtros e ordenação da lista de disciplinas (lembrados neste computador).
+const COURSE_PREFS_KEY = "0spof.courses.prefs";
+const courseView = { query: "", filter: "all", sort: "name" };
+
+try {
+  Object.assign(courseView, JSON.parse(localStorage.getItem(COURSE_PREFS_KEY) || "{}"), { query: "" });
+} catch (_) {}
+
+function saveCourseView() {
+  try {
+    localStorage.setItem(COURSE_PREFS_KEY, JSON.stringify({ filter: courseView.filter, sort: courseView.sort }));
+  } catch (_) {}
+}
+
+const normalizeText = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const timeOrNull = (iso) => (iso ? new Date(iso).getTime() : null);
+const byName = (a, b) => a.fullname.localeCompare(b.fullname, "pt-BR", { sensitivity: "base", numeric: true });
+
+// Ordena valores ausentes por último, desempatando pelo nome.
+function compareNullable(a, b, va, vb, dir) {
+  if (va === vb) return byName(a, b);
+  if (va === null) return 1;
+  if (vb === null) return -1;
+  return (va - vb) * dir;
+}
+
+const COURSE_SORTS = {
+  name: byName,
+  deadline: (a, b) => compareNullable(a, b, timeOrNull(a.next_deadline), timeOrNull(b.next_deadline), 1),
+  pending: (a, b) => (b.pending_deadlines || 0) - (a.pending_deadlines || 0) || byName(a, b),
+  activities: (a, b) => (b.activities_count || 0) - (a.activities_count || 0) || byName(a, b),
+  synced: (a, b) => compareNullable(a, b, timeOrNull(a.last_synced_at), timeOrNull(b.last_synced_at), -1),
+};
+
+const COURSE_FILTERS = {
+  all: () => true,
+  active: (c) => !c.is_muted,
+  muted: (c) => c.is_muted,
+  pending: (c) => (c.pending_deadlines || 0) > 0,
+};
+
+function describeNextDeadline(c) {
+  if (!c.next_deadline) return "";
+  const due = new Date(c.next_deadline);
+  const days = Math.round((new Date(due.toDateString()) - new Date(new Date().toDateString())) / 86400000);
+  const when = days <= 0 ? "hoje" : days === 1 ? "amanhã" : `em ${days} dias`;
+  const extra = c.pending_deadlines > 1 ? ` (+${c.pending_deadlines - 1})` : "";
+  return ` • <span class="next-deadline">próximo prazo ${when}${extra}</span>`;
+}
+
+function syncCourseToolbar() {
+  document.querySelectorAll(".filter-chip").forEach((chip) => {
+    const on = chip.getAttribute("data-filter") === courseView.filter;
+    chip.classList.toggle("active", on);
+    chip.setAttribute("aria-checked", on ? "true" : "false");
+  });
+  const sortSel = document.getElementById("courses-sort");
+  if (sortSel) sortSel.value = courseView.sort;
+}
+
+function renderCourses() {
+  const container = document.getElementById("courses-list");
+  const countEl = document.getElementById("courses-count");
+  if (!cachedCourses || cachedCourses.length === 0) {
+    container.innerHTML = "<p>Nenhum curso cacheado localmente ainda. Clique em 'Sincronizar Moodle'.</p>";
+    if (countEl) countEl.innerText = "";
+    return;
+  }
+  const q = normalizeText(courseView.query.trim());
+  const filterFn = COURSE_FILTERS[courseView.filter] || COURSE_FILTERS.all;
+  const visible = cachedCourses
+    .filter(filterFn)
+    .filter((c) => !q || normalizeText(`${c.fullname} ${c.shortname}`).includes(q))
+    .sort(COURSE_SORTS[courseView.sort] || COURSE_SORTS.name);
+  if (countEl) {
+    countEl.innerText = visible.length === cachedCourses.length
+      ? `${cachedCourses.length} disciplinas`
+      : `${visible.length} de ${cachedCourses.length} disciplinas`;
+  }
+  if (visible.length === 0) {
+    container.innerHTML = "<p>Nenhuma disciplina corresponde aos filtros.</p>";
+    return;
+  }
+  container.innerHTML = visible
+    .map(
+      (c) => {
+        const muteBadge = c.is_muted
+          ? `<span class="badge-muted" title="Prazos desta disciplina estão ocultos no painel"><svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg> Silenciado</span>`
+          : "";
+        const muteBtn = c.is_muted
+          ? `<button class="btn btn-secondary btn-toggle-mute" data-course-id="${c.id}" data-muted="false" style="height:32px;padding:0 10px;font-size:12px;" title="Reativar acompanhamento de prazos">
+               <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+               Reativar prazos
+             </button>`
+          : `<button class="btn btn-ghost btn-toggle-mute" data-course-id="${c.id}" data-muted="true" style="height:32px;padding:0 10px;font-size:12px;color:var(--muted);" title="Silenciar prazos deste curso no painel">
+               <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+               Silenciar
+             </button>`;
+
+        return `
+          <div class="list-item course-row ${c.is_muted ? "course-muted-row" : ""}" data-course-id="${c.id}" style="cursor:pointer;">
+            <div class="item-content">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
+                <strong>${c.fullname}</strong>
+                ${muteBadge}
+              </div>
+              <small>ID #${c.id} • ${c.sections_count || 0} seções • ${c.activities_count || 0} atividades${describeNextDeadline(c)}</small>
+            </div>
+            <div class="item-actions">
+              ${muteBtn}
+              <button class="btn btn-secondary btn-open-course" data-course-id="${c.id}" style="height:32px;padding:0 12px;font-size:12px;">
+                Abrir disciplina
+                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              </button>
+            </div>
+          </div>
+        `;
+      }
+    )
+    .join("");
+
+  container.querySelectorAll(".btn-toggle-mute").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const courseId = parseInt(btn.getAttribute("data-course-id"), 10);
+      const isMuted = btn.getAttribute("data-muted") === "true";
+      try {
+        await invoke("set_course_muted", { courseId, isMuted });
+        await refreshData();
+      } catch (err) {
+        alert("Erro ao alterar silenciamento do curso: " + err);
+      }
+    });
+  });
+
+  container.querySelectorAll(".course-row").forEach((row) => {
+    row.addEventListener("click", () => {
+      const courseId = parseInt(row.getAttribute("data-course-id"), 10);
+      openCourseDetail(courseId);
+    });
+  });
+}
+
 async function loadCourses() {
   const container = document.getElementById("courses-list");
   try {
     cachedCourses = await invoke("get_courses");
-    if (!cachedCourses || cachedCourses.length === 0) {
-      container.innerHTML = "<p>Nenhum curso cacheado localmente ainda. Clique em 'Sincronizar Moodle'.</p>";
-      return;
-    }
-    container.innerHTML = cachedCourses
-      .map(
-        (c) => {
-          const muteBadge = c.is_muted
-            ? `<span class="badge-muted" title="Prazos desta disciplina estão ocultos no painel"><svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg> Silenciado</span>`
-            : "";
-          const muteBtn = c.is_muted
-            ? `<button class="btn btn-secondary btn-toggle-mute" data-course-id="${c.id}" data-muted="false" style="height:32px;padding:0 10px;font-size:12px;" title="Reativar acompanhamento de prazos">
-                 <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                 Reativar prazos
-               </button>`
-            : `<button class="btn btn-ghost btn-toggle-mute" data-course-id="${c.id}" data-muted="true" style="height:32px;padding:0 10px;font-size:12px;color:var(--muted);" title="Silenciar prazos deste curso no painel">
-                 <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                 Silenciar
-               </button>`;
-
-          return `
-            <div class="list-item course-row ${c.is_muted ? "course-muted-row" : ""}" data-course-id="${c.id}" style="cursor:pointer;">
-              <div class="item-content">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
-                  <strong>${c.fullname}</strong>
-                  ${muteBadge}
-                </div>
-                <small>ID #${c.id} • ${c.sections_count || 0} seções • ${c.activities_count || 0} atividades</small>
-              </div>
-              <div class="item-actions">
-                ${muteBtn}
-                <button class="btn btn-secondary btn-open-course" data-course-id="${c.id}" style="height:32px;padding:0 12px;font-size:12px;">
-                  Abrir disciplina
-                  <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                </button>
-              </div>
-            </div>
-          `;
-        }
-      )
-      .join("");
-
-    container.querySelectorAll(".btn-toggle-mute").forEach((btn) => {
-      btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const courseId = parseInt(btn.getAttribute("data-course-id"), 10);
-        const isMuted = btn.getAttribute("data-muted") === "true";
-        try {
-          await invoke("set_course_muted", { courseId, isMuted });
-          await refreshData();
-        } catch (err) {
-          alert("Erro ao alterar silenciamento do curso: " + err);
-        }
-      });
-    });
-
-    container.querySelectorAll(".course-row").forEach((row) => {
-      row.addEventListener("click", () => {
-        const courseId = parseInt(row.getAttribute("data-course-id"), 10);
-        openCourseDetail(courseId);
-      });
-    });
+    syncCourseToolbar();
+    renderCourses();
   } catch (err) {
     container.innerHTML = `<p class="error">Erro ao listar cursos: ${err}</p>`;
   }
 }
+
+(function setupCourseToolbar() {
+  const search = document.getElementById("courses-search");
+  if (!search) return;
+  search.addEventListener("input", () => {
+    courseView.query = search.value;
+    renderCourses();
+  });
+  document.querySelectorAll(".filter-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      courseView.filter = chip.getAttribute("data-filter");
+      saveCourseView();
+      syncCourseToolbar();
+      renderCourses();
+    });
+  });
+  document.getElementById("courses-sort").addEventListener("change", (e) => {
+    courseView.sort = e.target.value;
+    saveCourseView();
+    renderCourses();
+  });
+  syncCourseToolbar();
+})();
 
 function getActivityBadge(actType) {
   const icons = {

@@ -1198,3 +1198,83 @@ h2 {
   gap: 8px;
   flex: none;
 }
+/* Filtros e ordenação da página de disciplinas */
+.courses-count {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.courses-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: 16px;
+}
+
+.courses-search,
+.sort-select select {
+  min-height: 36px;
+  padding: 7px 12px;
+  color: var(--ink);
+  border: 1px solid #d8deea;
+  border-radius: 8px;
+  background: #fff;
+  transition: border 0.15s, box-shadow 0.15s;
+}
+
+.courses-search {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+
+.courses-search:focus,
+.sort-select select:focus {
+  border-color: #7f9df5;
+  box-shadow: 0 0 0 3px rgba(55, 104, 237, 0.1);
+  outline: 0;
+}
+
+.filter-chips {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+}
+
+.filter-chip {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.filter-chip:hover {
+  color: var(--ink);
+}
+
+.filter-chip.active {
+  color: var(--blue-dark);
+  background: var(--paper);
+  box-shadow: 0 1px 3px rgba(25, 40, 75, 0.12);
+}
+
+.sort-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.next-deadline {
+  color: var(--blue-dark);
+  font-weight: 600;
+}
