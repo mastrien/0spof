@@ -163,7 +163,13 @@
               <p class="eyebrow">Base local</p>
               <h2>Disciplinas cacheadas (clique para abrir)</h2>
             </div>
-            <span id="courses-count" class="courses-count"></span>
+            <div class="courses-heading-actions">
+              <span id="courses-count" class="courses-count"></span>
+              <button id="btn-import-course" class="btn btn-ghost" type="button" style="height:32px;padding:0 12px;font-size:12px;" title="Importar disciplina (.zip) ou backup (.json)">
+                <svg class="btn-svg" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span>Importar disciplina</span>
+              </button>
+            </div>
           </div>
           <div class="courses-toolbar" role="search">
             <input type="search" id="courses-search" class="courses-search" placeholder="Buscar por nome ou sigla…" aria-label="Buscar disciplinas">
@@ -196,7 +202,11 @@
               <p class="eyebrow" id="course-detail-short">DISCIPLINA</p>
               <h2 id="course-detail-title">Nome da Disciplina</h2>
             </div>
-            <div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <button id="btn-detail-export-course" class="btn btn-secondary" type="button" style="height:32px;padding:0 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;" title="Selecionar materiais e exportar pacote compartilhável (.zip)">
+                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                <span>Exportar / compartilhar</span>
+              </button>
               <button id="btn-detail-toggle-mute" class="btn btn-secondary" style="height:32px;padding:0 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;">
                 <!-- Preenchido dinamicamente -->
               </button>
@@ -329,7 +339,7 @@
             <div>
               <p class="eyebrow">Gerenciamento Local</p>
               <h2>Backup e Limpeza de Dados</h2>
-              <p class="section-description">Exporte uma cópia completa de segurança em JSON, restaure de um backup anterior ou apague todos os dados salvos localmente.</p>
+              <p class="section-description">Exporte uma cópia completa de segurança em JSON, restaure de um backup anterior ou importe um pacote compartilhado de disciplina (.zip).</p>
             </div>
           </div>
 
@@ -339,11 +349,11 @@
               <span>Exportar dados</span>
             </button>
 
-            <button id="btn-import-data" class="btn btn-secondary" type="button" title="Importar dados de um arquivo JSON">
+            <button id="btn-import-data" class="btn btn-secondary" type="button" title="Importar backup (.json) ou pacote de disciplina (.zip)">
               <svg class="btn-svg" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              <span>Importar dados</span>
+              <span>Importar backup / disciplina</span>
             </button>
-            <input type="file" id="file-import-input" accept=".json,application/json" style="display:none;">
+            <input type="file" id="file-import-input" accept=".json,.zip,application/json,application/zip" style="display:none;">
 
             <button id="btn-wipe-data" class="btn btn-danger-outline" type="button" title="Apagar todos os cursos, seções, atividades e fila do banco local">
               <svg class="btn-svg" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
@@ -395,6 +405,54 @@
           <pre id="proof-text" class="proof-pre"></pre>
           <div class="modal-footer">
             <button id="btn-copy-proof" class="btn btn-secondary">Copiar comprovante</button>
+          </div>
+        </div>
+      </div>
+      <div id="course-export-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="export-modal-course-title">
+        <div class="modal-content export-modal-content">
+          <div class="modal-header">
+            <div>
+              <p class="eyebrow">Compartilhar disciplina</p>
+              <h2 id="export-modal-course-title">Exportar materiais</h2>
+              <p class="section-description" style="margin-top:4px;font-size:12.5px;">Selecione item a item o que entra no pacote (.zip). Materiais e PDFs vêm marcados; atividades vêm desmarcadas por padrão.</p>
+            </div>
+            <button id="btn-close-export-modal" class="btn-close" type="button" aria-label="Fechar">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+
+          <div class="export-toolbar">
+            <div class="export-toolbar-row">
+              <input type="search" id="export-modal-search" class="courses-search" placeholder="Filtrar por título, PDF ou tipo…" aria-label="Filtrar itens para exportação">
+              <div class="export-presets">
+                <button type="button" class="btn btn-ghost btn-export-preset" data-preset="materials">Materiais (padrão)</button>
+                <button type="button" class="btn btn-ghost btn-export-preset" data-preset="pdfs">Só PDFs</button>
+                <button type="button" class="btn btn-ghost btn-export-preset" data-preset="all">Tudo</button>
+                <button type="button" class="btn btn-ghost btn-export-preset" data-preset="none">Limpar</button>
+              </div>
+            </div>
+            <div class="export-toggles">
+              <label class="export-toggle-check">
+                <input type="checkbox" id="export-toggle-activities">
+                <span>Incluir atividades (tarefas, questionários, fóruns)</span>
+              </label>
+              <label class="export-toggle-check">
+                <input type="checkbox" id="export-include-files" checked>
+                <span>Anexar arquivos baixados (PDFs e cópias offline)</span>
+              </label>
+            </div>
+          </div>
+
+          <div id="export-modal-sections" class="export-sections-list">
+            <!-- Populado dinamicamente -->
+          </div>
+
+          <div class="export-modal-footer">
+            <span id="export-modal-summary" class="export-summary-text">0 itens selecionados</span>
+            <div style="display:flex;gap:10px;align-items:center;">
+              <button id="btn-cancel-course-export" class="btn btn-ghost" type="button">Cancelar</button>
+              <button id="btn-confirm-course-export" class="btn btn-primary" type="button">Exportar pacote (.zip)</button>
+            </div>
           </div>
         </div>
       </div>

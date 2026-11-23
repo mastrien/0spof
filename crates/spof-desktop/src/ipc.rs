@@ -6,13 +6,16 @@ use crate::commands::{
     handle_open_target, handle_save_session, handle_set_course_muted, handle_sync_moodle, AppState,
 };
 use crate::data_commands::{
-    handle_check_for_updates, handle_export_data, handle_get_app_version, handle_import_data,
-    handle_logout, handle_wipe_all_data,
+    handle_check_for_updates, handle_export_course_package, handle_export_data,
+    handle_get_app_version, handle_get_course_export_preview, handle_import_data,
+    handle_import_package_bytes, handle_logout, handle_wipe_all_data,
 };
 use crate::dto::{
-    CourseDto, EnqueueResultDto, ImportSummaryDto, OutboxItemDto, ProofDto, SectionDto,
-    SessionInfoDto, SyncSummaryDto, SystemStatusDto, UpcomingDeadlineDto, UpdateInfoDto,
+    CourseDto, CourseExportPreviewDto, EnqueueResultDto, ImportSummaryDto, OutboxItemDto, ProofDto,
+    SectionDto, SessionInfoDto, SyncSummaryDto, SystemStatusDto, UpcomingDeadlineDto,
+    UpdateInfoDto,
 };
+use spof_core::CourseExportSelection;
 use std::sync::Arc;
 
 #[tauri::command]
@@ -145,6 +148,36 @@ pub fn import_data(
     json_content: String,
 ) -> Result<ImportSummaryDto, String> {
     handle_import_data(&state, json_content)
+}
+
+#[tauri::command]
+pub fn get_course_export_preview(
+    state: tauri::State<'_, Arc<AppState>>,
+    course_id: i64,
+) -> Result<CourseExportPreviewDto, String> {
+    handle_get_course_export_preview(&state, course_id)
+}
+
+#[tauri::command]
+pub fn export_course_package(
+    state: tauri::State<'_, Arc<AppState>>,
+    selection: CourseExportSelection,
+) -> Result<tauri::ipc::Response, String> {
+    let bytes = handle_export_course_package(&state, selection)?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+#[tauri::command]
+pub fn import_package(
+    state: tauri::State<'_, Arc<AppState>>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<ImportSummaryDto, String> {
+    match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => handle_import_package_bytes(&state, bytes),
+        tauri::ipc::InvokeBody::Json(_) => {
+            Err("Formato de envio inválido: esperado conteúdo binário do arquivo.".to_string())
+        }
+    }
 }
 
 #[tauri::command]

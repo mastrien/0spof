@@ -33,6 +33,28 @@ function formatDate(dateStr) {
   }
 }
 
+function escapeHtml(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatBytes(bytes) {
+  if (!bytes || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let val = bytes;
+  let idx = 0;
+  while (val >= 1024 && idx < units.length - 1) {
+    val /= 1024;
+    idx++;
+  }
+  const formatted = idx === 0 ? `${Math.round(val)}` : val.toFixed(val < 10 ? 1 : 0).replace(".", ",");
+  return `${formatted} ${units[idx]}`;
+}
+
 // Navegação de Abas
 const navItems = document.querySelectorAll(".nav-item");
 const tabPanes = document.querySelectorAll(".tab-pane");
@@ -279,6 +301,10 @@ function renderCourses() {
             </div>
             <div class="item-actions">
               ${muteBtn}
+              <button class="btn btn-ghost btn-export-course" data-course-id="${c.id}" style="height:32px;padding:0 10px;font-size:12px;" title="Selecionar materiais e exportar pacote (.zip)">
+                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                Exportar
+              </button>
               <button class="btn btn-secondary btn-open-course" data-course-id="${c.id}" style="height:32px;padding:0 12px;font-size:12px;">
                 Abrir disciplina
                 <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
@@ -301,6 +327,14 @@ function renderCourses() {
       } catch (err) {
         alert("Erro ao alterar silenciamento do curso: " + err);
       }
+    });
+  });
+
+  container.querySelectorAll(".btn-export-course").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const courseId = parseInt(btn.getAttribute("data-course-id"), 10);
+      openCourseExportModal(courseId);
     });
   });
 
@@ -365,6 +399,11 @@ async function openCourseDetail(courseId) {
   document.getElementById("course-detail-view").style.display = "block";
   document.getElementById("course-detail-short").innerText = course ? `CURSO #${course.id} • ${course.shortname}` : `CURSO #${courseId}`;
   document.getElementById("course-detail-title").innerText = course ? course.fullname : "Disciplina";
+
+  const btnDetailExport = document.getElementById("btn-detail-export-course");
+  if (btnDetailExport) {
+    btnDetailExport.onclick = () => openCourseExportModal(courseId);
+  }
 
   const btnDetailMute = document.getElementById("btn-detail-toggle-mute");
   if (btnDetailMute && course) {
@@ -857,39 +896,355 @@ if (btnExportData) {
   });
 }
 
-// Importar dados locais (JSON)
+// Importar dados locais (.json) ou pacote de disciplina (.zip)
 const btnImportData = document.getElementById("btn-import-data");
+const btnImportCourse = document.getElementById("btn-import-course");
 const fileImportInput = document.getElementById("file-import-input");
 
-if (btnImportData && fileImportInput) {
-  btnImportData.addEventListener("click", () => {
-    fileImportInput.value = "";
-    fileImportInput.click();
-  });
+function triggerImportPicker() {
+  if (!fileImportInput) return;
+  fileImportInput.value = "";
+  fileImportInput.click();
+}
 
+if (btnImportData && fileImportInput) {
+  btnImportData.addEventListener("click", triggerImportPicker);
+}
+if (btnImportCourse && fileImportInput) {
+  btnImportCourse.addEventListener("click", triggerImportPicker);
+}
+
+if (fileImportInput) {
   fileImportInput.addEventListener("change", async (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const jsonContent = event.target.result;
-        const summary = await invoke("import_data", { jsonContent });
-        const resBox = document.getElementById("data-management-result");
-        if (resBox) {
-          resBox.className = "result-message success";
-          resBox.innerText = `Backup importado com sucesso! Cursos: ${summary.courses_imported}, SeÃ§Ãµes: ${summary.sections_imported}, Atividades: ${summary.activities_imported}, Fila: ${summary.outbox_items_imported}`;
-          resBox.style.display = "block";
-        }
-        await refreshData();
-        alert(`ImportaÃ§Ã£o concluÃ­da com sucesso!\nCursos importados: ${summary.courses_imported}\nSeÃ§Ãµes: ${summary.sections_imported}\nAtividades: ${summary.activities_imported}\nItens na fila: ${summary.outbox_items_imported}`);
-      } catch (err) {
-        alert("Erro ao importar arquivo de backup: " + err);
+    try {
+      const buf = await file.arrayBuffer();
+      const summary = await invoke("import_package", new Uint8Array(buf));
+      const filesText = summary.files_imported > 0 ? `, Arquivos offline: ${summary.files_imported}` : "";
+      const resBox = document.getElementById("data-management-result");
+      if (resBox) {
+        resBox.className = "result-message success";
+        resBox.innerText = `Importação concluída com sucesso! Cursos: ${summary.courses_imported}, Seções: ${summary.sections_imported}, Atividades: ${summary.activities_imported}, Fila: ${summary.outbox_items_imported}${filesText}`;
+        resBox.style.display = "block";
       }
-    };
-    reader.readAsText(file);
+      await refreshData();
+      alert(
+        `Importação concluída com sucesso!\nCursos importados: ${summary.courses_imported}\nSeções: ${summary.sections_imported}\nAtividades: ${summary.activities_imported}\nArquivos offline restaurados: ${summary.files_imported || 0}\nItens na fila: ${summary.outbox_items_imported}`
+      );
+    } catch (err) {
+      alert("Erro ao importar arquivo: " + err);
+    }
   });
+}
+
+// Exportação seletiva por disciplina (.zip compartilhável)
+const courseExportModal = document.getElementById("course-export-modal");
+const exportModalTitle = document.getElementById("export-modal-course-title");
+const exportModalSearch = document.getElementById("export-modal-search");
+const exportModalSections = document.getElementById("export-modal-sections");
+const exportToggleActivities = document.getElementById("export-toggle-activities");
+const exportIncludeFiles = document.getElementById("export-include-files");
+const exportModalSummary = document.getElementById("export-modal-summary");
+const btnConfirmCourseExport = document.getElementById("btn-confirm-course-export");
+
+const courseExportState = {
+  preview: null,
+  selectedIds: new Set(),
+  query: "",
+  includeFiles: true,
+};
+
+function allPreviewItems() {
+  if (!courseExportState.preview) return [];
+  return courseExportState.preview.sections.flatMap((s) => s.items || []);
+}
+
+function itemMatchesExportSearch(item, q) {
+  if (!q) return true;
+  const hay = normalizeText(
+    `${item.title} ${item.activity_type} ${item.file_name || ""} ${item.is_pdf ? "pdf" : ""} ${
+      item.is_material ? "material" : "atividade"
+    }`
+  );
+  return hay.includes(q);
+}
+
+function syncCourseExportSelectionUi() {
+  if (!courseExportState.preview || !exportModalSections) return;
+
+  exportModalSections.querySelectorAll(".export-item-checkbox").forEach((cb) => {
+    const id = parseInt(cb.getAttribute("data-item-id"), 10);
+    const checked = courseExportState.selectedIds.has(id);
+    cb.checked = checked;
+    const row = cb.closest(".export-item-row");
+    if (row) row.classList.toggle("unchecked", !checked);
+  });
+
+  exportModalSections.querySelectorAll(".export-section-checkbox").forEach((secCb) => {
+    const secId = parseInt(secCb.getAttribute("data-section-id"), 10);
+    const sec = courseExportState.preview.sections.find((s) => s.id === secId);
+    const items = sec ? sec.items || [] : [];
+    const selectedInSec = items.filter((it) => courseExportState.selectedIds.has(it.id)).length;
+    secCb.checked = items.length > 0 && selectedInSec === items.length;
+    secCb.indeterminate = selectedInSec > 0 && selectedInSec < items.length;
+  });
+
+  const allItems = allPreviewItems();
+  const nonMaterialItems = allItems.filter((it) => !it.is_material);
+  const selectedActivities = nonMaterialItems.filter((it) => courseExportState.selectedIds.has(it.id)).length;
+  if (exportToggleActivities) {
+    exportToggleActivities.disabled = nonMaterialItems.length === 0;
+    exportToggleActivities.checked =
+      nonMaterialItems.length > 0 && selectedActivities === nonMaterialItems.length;
+    exportToggleActivities.indeterminate =
+      selectedActivities > 0 && selectedActivities < nonMaterialItems.length;
+  }
+
+  const chosen = allItems.filter((it) => courseExportState.selectedIds.has(it.id));
+  const pdfCount = chosen.filter((it) => it.is_pdf).length;
+  const totalBytes = courseExportState.includeFiles
+    ? chosen.reduce((acc, it) => acc + (it.has_local_file ? it.file_size_bytes || 0 : 0), 0)
+    : 0;
+  const pdfPart = pdfCount > 0 ? ` · ${pdfCount} PDF${pdfCount > 1 ? "s" : ""}` : "";
+  const sizePart = totalBytes > 0 ? ` · ${formatBytes(totalBytes)}` : "";
+
+  if (exportModalSummary) {
+    exportModalSummary.innerText = `${chosen.length} de ${allItems.length} itens selecionados${pdfPart}${sizePart}`;
+  }
+  if (btnConfirmCourseExport) {
+    btnConfirmCourseExport.disabled = chosen.length === 0;
+  }
+}
+
+function renderCourseExportSections() {
+  if (!exportModalSections) return;
+  const preview = courseExportState.preview;
+  if (!preview || !preview.sections || preview.sections.length === 0) {
+    exportModalSections.innerHTML = `<p style="color:var(--muted);padding:12px 0;">Nenhum item encontrado nesta disciplina para exportação.</p>`;
+    syncCourseExportSelectionUi();
+    return;
+  }
+
+  const q = normalizeText(courseExportState.query.trim());
+  const visibleSections = preview.sections
+    .map((sec) => ({
+      sec,
+      items: (sec.items || []).filter((it) => itemMatchesExportSearch(it, q)),
+    }))
+    .filter((entry) => entry.items.length > 0);
+
+  if (visibleSections.length === 0) {
+    exportModalSections.innerHTML = `<p style="color:var(--muted);padding:12px 0;">Nenhum item corresponde ao filtro "${escapeHtml(courseExportState.query)}".</p>`;
+    syncCourseExportSelectionUi();
+    return;
+  }
+
+  exportModalSections.innerHTML = visibleSections
+    .map(({ sec, items }) => {
+      const itemsHtml = items
+        .map((item) => {
+          const checked = courseExportState.selectedIds.has(item.id);
+          const pdfBadge = item.is_pdf ? `<span class="badge-pdf">PDF</span>` : "";
+          const kindClass = item.is_material ? "material" : "activity";
+          const fileTag = item.has_local_file
+            ? `<span class="badge-file-offline">${escapeHtml(item.file_name || "Arquivo offline")} · ${formatBytes(item.file_size_bytes || 0)}</span>`
+            : `<span class="badge-link-only">${item.url ? "Apenas link" : "Somente registro"}</span>`;
+          const dueTag =
+            !item.is_material && item.due_date
+              ? `<span class="badge-link-only">Prazo: ${escapeHtml(formatDate(item.due_date))}</span>`
+              : "";
+
+          return `
+            <label class="export-item-row ${checked ? "" : "unchecked"}">
+              <input type="checkbox" class="export-item-checkbox" data-item-id="${item.id}" ${checked ? "checked" : ""}>
+              <div class="export-item-info">
+                <div class="export-item-top">
+                  ${pdfBadge}
+                  <span class="export-type-pill ${kindClass}">${getActivityBadge(item.activity_type)}</span>
+                  <strong>${escapeHtml(item.title)}</strong>
+                </div>
+                <div class="export-item-meta">
+                  ${fileTag}
+                  ${dueTag}
+                </div>
+              </div>
+            </label>
+          `;
+        })
+        .join("");
+
+      return `
+        <div class="export-section-block">
+          <label class="export-section-header">
+            <input type="checkbox" class="export-section-checkbox" data-section-id="${sec.id}">
+            <strong>${escapeHtml(sec.name)}</strong>
+            <span class="export-section-count">${items.length} ${items.length === 1 ? "item" : "itens"}</span>
+          </label>
+          <div class="export-section-items">${itemsHtml}</div>
+        </div>
+      `;
+    })
+    .join("");
+
+  exportModalSections.querySelectorAll(".export-item-checkbox").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const id = parseInt(cb.getAttribute("data-item-id"), 10);
+      if (cb.checked) {
+        courseExportState.selectedIds.add(id);
+      } else {
+        courseExportState.selectedIds.delete(id);
+      }
+      syncCourseExportSelectionUi();
+    });
+  });
+
+  exportModalSections.querySelectorAll(".export-section-checkbox").forEach((secCb) => {
+    secCb.addEventListener("change", () => {
+      const secId = parseInt(secCb.getAttribute("data-section-id"), 10);
+      const sec = courseExportState.preview.sections.find((s) => s.id === secId);
+      if (!sec) return;
+      const qNorm = normalizeText(courseExportState.query.trim());
+      const targetItems = qNorm
+        ? (sec.items || []).filter((it) => itemMatchesExportSearch(it, qNorm))
+        : sec.items || [];
+      for (const it of targetItems) {
+        if (secCb.checked) {
+          courseExportState.selectedIds.add(it.id);
+        } else {
+          courseExportState.selectedIds.delete(it.id);
+        }
+      }
+      syncCourseExportSelectionUi();
+    });
+  });
+
+  syncCourseExportSelectionUi();
+}
+
+function closeCourseExportModal() {
+  if (courseExportModal) courseExportModal.classList.add("hidden");
+}
+
+async function openCourseExportModal(courseId) {
+  if (!courseExportModal) return;
+  courseExportState.preview = null;
+  courseExportState.selectedIds = new Set();
+  courseExportState.query = "";
+  courseExportState.includeFiles = true;
+  if (exportModalSearch) exportModalSearch.value = "";
+  if (exportIncludeFiles) exportIncludeFiles.checked = true;
+  if (exportModalTitle) exportModalTitle.innerText = "Carregando disciplina…";
+  if (exportModalSections) {
+    exportModalSections.innerHTML = `<p style="color:var(--muted);padding:12px 0;">Carregando itens da disciplina…</p>`;
+  }
+  if (btnConfirmCourseExport) btnConfirmCourseExport.disabled = true;
+  courseExportModal.classList.remove("hidden");
+
+  try {
+    const preview = await invoke("get_course_export_preview", { courseId });
+    courseExportState.preview = preview;
+    courseExportState.selectedIds = new Set(
+      preview.sections
+        .flatMap((s) => s.items || [])
+        .filter((it) => it.selected_by_default)
+        .map((it) => it.id)
+    );
+    if (exportModalTitle) exportModalTitle.innerText = preview.fullname;
+    renderCourseExportSections();
+  } catch (err) {
+    closeCourseExportModal();
+    alert("Erro ao preparar exportação da disciplina: " + err);
+  }
+}
+
+if (courseExportModal) {
+  document.getElementById("btn-close-export-modal")?.addEventListener("click", closeCourseExportModal);
+  document.getElementById("btn-cancel-course-export")?.addEventListener("click", closeCourseExportModal);
+  courseExportModal.addEventListener("click", (e) => {
+    if (e.target === courseExportModal) closeCourseExportModal();
+  });
+
+  if (exportModalSearch) {
+    exportModalSearch.addEventListener("input", () => {
+      courseExportState.query = exportModalSearch.value;
+      renderCourseExportSections();
+    });
+  }
+
+  document.querySelectorAll(".btn-export-preset").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const preset = btn.getAttribute("data-preset");
+      const items = allPreviewItems();
+      courseExportState.selectedIds.clear();
+      if (preset === "materials") {
+        items.filter((it) => it.is_material).forEach((it) => courseExportState.selectedIds.add(it.id));
+      } else if (preset === "pdfs") {
+        items.filter((it) => it.is_pdf).forEach((it) => courseExportState.selectedIds.add(it.id));
+      } else if (preset === "all") {
+        items.forEach((it) => courseExportState.selectedIds.add(it.id));
+      }
+      syncCourseExportSelectionUi();
+    });
+  });
+
+  if (exportToggleActivities) {
+    exportToggleActivities.addEventListener("change", () => {
+      const nonMaterials = allPreviewItems().filter((it) => !it.is_material);
+      for (const it of nonMaterials) {
+        if (exportToggleActivities.checked) {
+          courseExportState.selectedIds.add(it.id);
+        } else {
+          courseExportState.selectedIds.delete(it.id);
+        }
+      }
+      syncCourseExportSelectionUi();
+    });
+  }
+
+  if (exportIncludeFiles) {
+    exportIncludeFiles.addEventListener("change", () => {
+      courseExportState.includeFiles = exportIncludeFiles.checked;
+      syncCourseExportSelectionUi();
+    });
+  }
+
+  if (btnConfirmCourseExport) {
+    btnConfirmCourseExport.addEventListener("click", async () => {
+      const preview = courseExportState.preview;
+      if (!preview || courseExportState.selectedIds.size === 0) return;
+
+      const originalLabel = btnConfirmCourseExport.innerText;
+      btnConfirmCourseExport.disabled = true;
+      btnConfirmCourseExport.innerText = "Gerando pacote…";
+      try {
+        const buf = await invoke("export_course_package", {
+          selection: {
+            course_id: preview.course_id,
+            activity_ids: Array.from(courseExportState.selectedIds),
+            include_section_ids: [],
+            include_files: courseExportState.includeFiles,
+          },
+        });
+        const blob = new Blob([buf], { type: "application/zip" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = preview.suggested_filename || `0spof-disciplina-${preview.course_id}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        closeCourseExportModal();
+      } catch (err) {
+        alert("Erro ao exportar disciplina: " + err);
+      } finally {
+        btnConfirmCourseExport.innerText = originalLabel;
+        syncCourseExportSelectionUi();
+      }
+    });
+  }
 }
 
 // Apagar todos os dados

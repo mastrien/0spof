@@ -1278,3 +1278,245 @@ h2 {
   color: var(--blue-dark);
   font-weight: 600;
 }
+
+.courses-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Modal de exportação seletiva por disciplina */
+.export-modal-content {
+  width: min(820px, 100%);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.export-modal-content .modal-header {
+  margin-bottom: 0;
+  flex: none;
+}
+
+.export-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  flex: none;
+}
+
+.export-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.export-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.btn-export-preset {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.export-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  align-items: center;
+}
+
+.export-toggle-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.export-toggle-check input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--blue);
+}
+
+.export-sections-list {
+  flex: 1;
+  min-height: 160px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 4px;
+}
+
+.export-section-block {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.export-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #f8faff;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.export-section-header input {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  accent-color: var(--blue);
+}
+
+.export-section-count {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.export-section-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.export-item-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #f0f3f9;
+  cursor: pointer;
+  transition: background 0.12s, opacity 0.12s;
+}
+
+.export-item-row:last-child {
+  border-bottom: 0;
+}
+
+.export-item-row:hover {
+  background: #fafcff;
+}
+
+.export-item-row.unchecked {
+  opacity: 0.62;
+}
+
+.export-item-checkbox {
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  flex: none;
+  accent-color: var(--blue);
+}
+
+.export-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.export-item-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.export-item-top strong {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.export-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.export-type-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.export-type-pill.material {
+  color: #2f54b3;
+  background: #edf2fc;
+}
+
+.export-type-pill.activity {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.badge-pdf {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  color: #c53030;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+}
+
+.badge-file-offline {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #087856;
+  background: #dff6ec;
+}
+
+.badge-link-only {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.export-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  flex: none;
+}
+
+.export-summary-text {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}

@@ -1,5 +1,7 @@
 use crate::commands::AppState;
-use crate::dto::{ImportSummaryDto, SessionInfoDto, UpdateInfoDto};
+use crate::dto::{CourseExportPreviewDto, ImportSummaryDto, SessionInfoDto, UpdateInfoDto};
+use spof_core::CourseExportSelection;
+use std::path::PathBuf;
 
 pub fn handle_logout(state: &AppState) -> SessionInfoDto {
     let mut session_guard = state.session.lock().unwrap();
@@ -23,6 +25,35 @@ pub fn handle_import_data(
     json_content: String,
 ) -> Result<ImportSummaryDto, String> {
     spof_core::api::import_data(&state.db, &json_content)
+}
+
+pub fn handle_get_course_export_preview(
+    state: &AppState,
+    course_id: i64,
+) -> Result<CourseExportPreviewDto, String> {
+    spof_core::api::course_export_preview(&state.db, course_id)
+}
+
+pub fn handle_export_course_package(
+    state: &AppState,
+    selection: CourseExportSelection,
+) -> Result<Vec<u8>, String> {
+    spof_core::api::export_course_package(&state.db, &selection)
+}
+
+pub fn handle_import_package_bytes_with_cache(
+    state: &AppState,
+    bytes: &[u8],
+    cache_dir: Option<PathBuf>,
+) -> Result<ImportSummaryDto, String> {
+    spof_core::api::import_package_bytes(&state.db, bytes, cache_dir)
+}
+
+pub fn handle_import_package_bytes(
+    state: &AppState,
+    bytes: &[u8],
+) -> Result<ImportSummaryDto, String> {
+    handle_import_package_bytes_with_cache(state, bytes, None)
 }
 
 pub fn handle_get_app_version() -> String {
