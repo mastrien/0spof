@@ -15,5 +15,8 @@ pub use crypto::*;
 pub use error::{Result, SpofError};
 pub use models::*;
 pub use outbox::{OutboxEngine, SubmissionProof, TsaClient};
-pub use storage::{BackupData, Database, ImportSummary};
+pub use storage::{
+    is_material_activity, is_pdf_activity, BackupData, BundledFile, CourseExportSelection,
+    Database, ImportSummary,
+};
 pub use update::{check_for_updates, UpdateCheckResult};

@@ -17,7 +17,7 @@ pub struct SyncSummary {
     pub resources_cached: usize,
 }
 
-fn default_cache_dir() -> PathBuf {
+pub fn default_cache_dir() -> PathBuf {
     if let Ok(custom) = std::env::var("SPOF_CACHE_DIR") {
         return PathBuf::from(custom);
     }

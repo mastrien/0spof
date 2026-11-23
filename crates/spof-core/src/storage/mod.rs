@@ -1,4 +1,5 @@
 mod backup;
+mod course_export;
 mod courses;
 mod meta;
 mod outbox;
@@ -7,9 +8,15 @@ mod schema;
 #[cfg(test)]
 mod backup_tests;
 #[cfg(test)]
+mod course_export_tests;
+#[cfg(test)]
 mod tests;
 
-pub use backup::{BackupData, ImportSummary};
+pub use backup::{BackupData, BundledFile, ImportSummary};
+pub use course_export::{
+    is_material_activity, is_pdf_activity, suggested_course_export_filename, CourseExportSelection,
+    ARCHIVE_MANIFEST_NAME,
+};
 
 use crate::error::Result;
 use rusqlite::Connection;

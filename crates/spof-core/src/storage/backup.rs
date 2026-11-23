@@ -10,6 +10,18 @@ pub struct ImportSummary {
     pub sections_imported: usize,
     pub activities_imported: usize,
     pub outbox_items_imported: usize,
+    #[serde(default)]
+    pub files_imported: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BundledFile {
+    pub activity_id: i64,
+    pub archive_path: String,
+    pub file_name: String,
+    #[serde(default)]
+    pub content_mime: Option<String>,
+    pub size_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -20,6 +32,8 @@ pub struct BackupData {
     pub sections: Vec<Section>,
     pub activities: Vec<Activity>,
     pub outbox_items: Vec<OutboxItem>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<BundledFile>,
 }
 
 impl Database {
@@ -126,6 +140,7 @@ impl Database {
             sections,
             activities,
             outbox_items,
+            files: Vec::new(),
         })
     }
 
@@ -154,6 +169,7 @@ impl Database {
             sections_imported: backup.sections.len(),
             activities_imported: backup.activities.len(),
             outbox_items_imported: backup.outbox_items.len(),
+            files_imported: 0,
         })
     }
 

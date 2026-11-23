@@ -5,4 +5,4 @@ pub mod resource;
 pub mod sync;
 
 pub use assignment_parser::{parse_assignment_details, AssignmentDetails};
-pub use sync::{CourseCrawler, SyncSummary};
+pub use sync::{default_cache_dir, CourseCrawler, SyncSummary};

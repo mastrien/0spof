@@ -107,6 +107,42 @@ pub struct ImportSummaryDto {
     pub sections_imported: usize,
     pub activities_imported: usize,
     pub outbox_items_imported: usize,
+    #[serde(default)]
+    pub files_imported: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExportItemPreviewDto {
+    pub id: i64,
+    pub section_id: i64,
+    pub title: String,
+    pub activity_type: String,
+    pub is_material: bool,
+    pub selected_by_default: bool,
+    pub is_pdf: bool,
+    pub has_local_file: bool,
+    pub file_name: Option<String>,
+    pub file_size_bytes: Option<u64>,
+    pub content_mime: Option<String>,
+    pub url: Option<String>,
+    pub due_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExportSectionPreviewDto {
+    pub id: i64,
+    pub name: String,
+    pub summary: Option<String>,
+    pub items: Vec<ExportItemPreviewDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CourseExportPreviewDto {
+    pub course_id: i64,
+    pub fullname: String,
+    pub shortname: String,
+    pub suggested_filename: String,
+    pub sections: Vec<ExportSectionPreviewDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

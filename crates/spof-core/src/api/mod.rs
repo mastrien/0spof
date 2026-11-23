@@ -6,11 +6,15 @@
 pub mod dto;
 
 use crate::auth::{MoodleClient, MoodleSession};
-use crate::crawler::CourseCrawler;
+use crate::crawler::{default_cache_dir, CourseCrawler};
 use crate::outbox::OutboxEngine;
-use crate::storage::Database;
+use crate::storage::{
+    is_material_activity, is_pdf_activity, suggested_course_export_filename, CourseExportSelection,
+    Database, ImportSummary,
+};
 use dto::{
-    ActivityDto, CourseDto, EnqueueResultDto, OutboxItemDto, ProofDto, SectionDto, SyncSummaryDto,
+    ActivityDto, CourseDto, CourseExportPreviewDto, EnqueueResultDto, ExportItemPreviewDto,
+    ExportSectionPreviewDto, ImportSummaryDto, OutboxItemDto, ProofDto, SectionDto, SyncSummaryDto,
     SystemStatusDto, UpcomingDeadlineDto,
 };
 use std::path::{Path, PathBuf};
@@ -217,14 +221,125 @@ pub fn export_data(database: &Database) -> Result<String, String> {
     database.export_data_json().map_err(err)
 }
 
-pub fn import_data(database: &Database, json: &str) -> Result<dto::ImportSummaryDto, String> {
-    let s = database.import_data_json(json).map_err(err)?;
-    Ok(dto::ImportSummaryDto {
+fn import_summary_dto(s: ImportSummary) -> ImportSummaryDto {
+    ImportSummaryDto {
         courses_imported: s.courses_imported,
         sections_imported: s.sections_imported,
         activities_imported: s.activities_imported,
         outbox_items_imported: s.outbox_items_imported,
+        files_imported: s.files_imported,
+    }
+}
+
+pub fn import_data(database: &Database, json: &str) -> Result<ImportSummaryDto, String> {
+    let s = database.import_data_json(json).map_err(err)?;
+    Ok(import_summary_dto(s))
+}
+
+pub fn course_export_preview(
+    database: &Database,
+    course_id: i64,
+) -> Result<CourseExportPreviewDto, String> {
+    let course = database
+        .get_course(course_id)
+        .map_err(err)?
+        .ok_or_else(|| format!("Disciplina #{course_id} não encontrada"))?;
+    let sections = database.get_sections_by_course(course_id).map_err(err)?;
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let suggested_filename = suggested_course_export_filename(&course, &today);
+
+    let preview_sections = sections
+        .into_iter()
+        .filter(|sec| {
+            !sec.activities.is_empty()
+                || sec.summary.as_deref().is_some_and(|s| !s.trim().is_empty())
+        })
+        .map(|sec| {
+            let items = sec
+                .activities
+                .into_iter()
+                .map(|act| {
+                    let is_material = is_material_activity(&act);
+                    let is_pdf = is_pdf_activity(&act);
+                    let file_meta = act.local_file_path.as_deref().and_then(|p| {
+                        let path = Path::new(p);
+                        std::fs::metadata(path)
+                            .ok()
+                            .filter(|m| m.is_file())
+                            .map(|m| {
+                                let name = path
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .map(str::to_string);
+                                (name, m.len())
+                            })
+                    });
+
+                    ExportItemPreviewDto {
+                        id: act.id,
+                        section_id: act.section_id,
+                        title: act.title,
+                        activity_type: act.activity_type.as_str().to_string(),
+                        is_material,
+                        selected_by_default: is_material,
+                        is_pdf,
+                        has_local_file: file_meta.is_some(),
+                        file_name: file_meta.as_ref().and_then(|(n, _)| n.clone()),
+                        file_size_bytes: file_meta.map(|(_, len)| len),
+                        content_mime: act.content_mime,
+                        url: act.url,
+                        due_date: act.due_date.map(|dt| dt.to_rfc3339()),
+                    }
+                })
+                .collect();
+
+            ExportSectionPreviewDto {
+                id: sec.id,
+                name: sec.name,
+                summary: sec.summary,
+                items,
+            }
+        })
+        .collect();
+
+    Ok(CourseExportPreviewDto {
+        course_id: course.id,
+        fullname: course.fullname,
+        shortname: course.shortname,
+        suggested_filename,
+        sections: preview_sections,
     })
+}
+
+pub fn export_course_package(
+    database: &Database,
+    selection: &CourseExportSelection,
+) -> Result<Vec<u8>, String> {
+    database.export_course_package(selection).map_err(err)
+}
+
+pub fn import_package_bytes(
+    database: &Database,
+    bytes: &[u8],
+    cache_dir: Option<PathBuf>,
+) -> Result<ImportSummaryDto, String> {
+    let target_dir = cache_dir.unwrap_or_else(default_cache_dir);
+    let summary = database
+        .import_package_bytes(bytes, &target_dir)
+        .map_err(err)?;
+    Ok(import_summary_dto(summary))
+}
+
+pub fn import_package_file(
+    database: &Database,
+    path: &Path,
+    cache_dir: Option<PathBuf>,
+) -> Result<ImportSummaryDto, String> {
+    let target_dir = cache_dir.unwrap_or_else(default_cache_dir);
+    let summary = database
+        .import_package_file(path, &target_dir)
+        .map_err(err)?;
+    Ok(import_summary_dto(summary))
 }
 
 #[cfg(test)]
@@ -284,5 +399,78 @@ mod tests {
         assert_eq!(c.pending_deadlines, 2);
         assert_eq!(c.next_deadline.as_deref(), Some(soon.to_rfc3339().as_str()));
         assert!(c.last_synced_at.is_some());
+    }
+
+    #[test]
+    fn course_export_preview_marks_materials_and_detects_pdfs() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let pdf_path = dir.path().join("201_livro.pdf");
+        std::fs::write(&pdf_path, b"%PDF-1.4 test bytes").unwrap();
+
+        let db = Database::open_in_memory().unwrap();
+        db.upsert_course(&Course {
+            id: 5,
+            fullname: "Sistemas Operacionais".into(),
+            shortname: "SO".into(),
+            summary: None,
+            last_synced_at: None,
+            is_muted: false,
+        })
+        .unwrap();
+        db.upsert_section(&Section {
+            id: 50,
+            course_id: 5,
+            name: "Unidade 1".into(),
+            summary: None,
+            activities: vec![],
+        })
+        .unwrap();
+        db.upsert_section(&Section {
+            id: 51,
+            course_id: 5,
+            name: "Tópico vazio".into(),
+            summary: None,
+            activities: vec![],
+        })
+        .unwrap();
+        db.upsert_activity(&Activity {
+            id: 201,
+            section_id: 50,
+            title: "Livro Texto".into(),
+            activity_type: ActivityType::Resource,
+            url: None,
+            description: None,
+            local_file_path: Some(pdf_path.to_string_lossy().to_string()),
+            content_mime: Some("application/pdf".into()),
+            due_date: None,
+            is_submitted: false,
+        })
+        .unwrap();
+        let mut assign = activity(203, None, false);
+        assign.section_id = 50;
+        db.upsert_activity(&assign).unwrap();
+
+        let preview = course_export_preview(&db, 5).unwrap();
+        assert_eq!(preview.course_id, 5);
+        assert!(preview
+            .suggested_filename
+            .starts_with("0spof-sistemas-operacionais-"));
+        assert!(preview.suggested_filename.ends_with(".zip"));
+        // Tópico vazio sem summary é filtrado
+        assert_eq!(preview.sections.len(), 1);
+        let items = &preview.sections[0].items;
+        assert_eq!(items.len(), 2);
+
+        assert!(items[0].is_material);
+        assert!(items[0].selected_by_default);
+        assert!(items[0].is_pdf);
+        assert!(items[0].has_local_file);
+        assert_eq!(items[0].file_name.as_deref(), Some("201_livro.pdf"));
+        assert_eq!(items[0].file_size_bytes, Some(19));
+
+        assert!(!items[1].is_material);
+        assert!(!items[1].selected_by_default);
+        assert!(!items[1].is_pdf);
+        assert!(!items[1].has_local_file);
     }
 }
