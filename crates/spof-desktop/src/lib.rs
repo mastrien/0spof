@@ -65,6 +65,17 @@ pub fn run() {
         let app_dir = PathBuf::from(local_appdata).join("0spof");
         let _ = std::fs::create_dir_all(&app_dir);
         app_dir.join("0spof.db")
+    } else if let Some(xdg_data) = std::env::var_os("XDG_DATA_HOME") {
+        let app_dir = PathBuf::from(xdg_data).join("0spof");
+        let _ = std::fs::create_dir_all(&app_dir);
+        app_dir.join("0spof.db")
+    } else if let Some(home) = std::env::var_os("HOME") {
+        let app_dir = PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join("0spof");
+        let _ = std::fs::create_dir_all(&app_dir);
+        app_dir.join("0spof.db")
     } else {
         PathBuf::from("0spof.db")
     };

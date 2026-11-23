@@ -1,11 +1,6 @@
-use crate::commands::AppState;
+use crate::commands::{handle_save_session, AppState};
 use std::sync::Arc;
-use tauri::Manager;
-
-#[cfg(windows)]
-use crate::commands::handle_save_session;
-#[cfg(windows)]
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 pub use spof_core::auth::is_authenticated_moodle_url;
 
@@ -47,42 +42,61 @@ pub fn handle_open_moodle_login_window(
     .inner_size(580.0, 740.0)
     .center()
     .resizable(true)
-    .on_page_load(move |_win, _payload| {
-        #[cfg(windows)]
+    .on_page_load(move |win, payload| {
+        let url_str = payload.url().as_str();
+        if payload.event() == tauri::webview::PageLoadEvent::Finished
+            && is_authenticated_moodle_url(url_str)
         {
-            let url_str = _payload.url().as_str();
-            if _payload.event() == tauri::webview::PageLoadEvent::Finished
-                && is_authenticated_moodle_url(url_str)
-            {
-                let win_clone = _win.clone();
-                let app_clone = app_clone.clone();
-                let state_clone = state_clone.clone();
-                let clean_base_clone = clean_base_clone.clone();
-                tauri::async_runtime::spawn(async move {
-                    extract_and_save_cookie_windows(
-                        &win_clone,
-                        &app_clone,
-                        &state_clone,
-                        &clean_base_clone,
-                    );
-                });
-            }
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = (
-                &_win,
-                &_payload,
-                &app_clone,
-                &state_clone,
-                &clean_base_clone,
-            );
+            let win_clone = win.clone();
+            let app_clone = app_clone.clone();
+            let state_clone = state_clone.clone();
+            let clean_base_clone = clean_base_clone.clone();
+            tauri::async_runtime::spawn(async move {
+                #[cfg(windows)]
+                extract_and_save_cookie_windows(
+                    &win_clone,
+                    &app_clone,
+                    &state_clone,
+                    &clean_base_clone,
+                );
+
+                #[cfg(not(windows))]
+                extract_and_save_cookie_native(
+                    &win_clone,
+                    &app_clone,
+                    &state_clone,
+                    &clean_base_clone,
+                );
+            });
         }
     })
     .build()
     .map_err(|e| format!("Falha ao abrir janela de autenticação: {}", e))?;
 
     Ok(())
+}
+
+#[cfg(not(windows))]
+fn extract_and_save_cookie_native(
+    win: &tauri::WebviewWindow,
+    app: &tauri::AppHandle,
+    state: &Arc<AppState>,
+    base_url: &str,
+) {
+    let Ok(parsed_url) = base_url.parse::<tauri::Url>() else {
+        return;
+    };
+    if let Ok(cookies) = win.cookies_for_url(parsed_url) {
+        for cookie in cookies {
+            if cookie.name() == "MoodleSession" && !cookie.value().is_empty() {
+                let _ =
+                    handle_save_session(state, base_url.to_string(), cookie.value().to_string());
+                let _ = app.emit("session_connected", ());
+                let _ = win.close();
+                break;
+            }
+        }
+    }
 }
 
 #[cfg(windows)]
