@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'activity_actions.dart';
+import 'course_export_page.dart';
 import 'data_actions.dart';
 import 'login_page.dart';
 import 'pair_page.dart';
@@ -196,7 +197,23 @@ class CoursesPage extends StatelessWidget {
                     child: ListTile(
                       title: Text(c.fullname, maxLines: 2, overflow: TextOverflow.ellipsis),
                       subtitle: Text('${c.sections} seções · ${c.activities} atividades'),
-                      trailing: c.muted ? const Icon(Icons.notifications_off_outlined) : const Icon(Icons.chevron_right),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (c.muted) const Icon(Icons.notifications_off_outlined),
+                          IconButton(
+                            tooltip: 'Exportar / compartilhar disciplina',
+                            icon: const Icon(Icons.share_outlined),
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => CourseExportPage(store: store, course: c),
+                              ),
+                            ),
+                          ),
+                          if (!c.muted) const Icon(Icons.chevron_right),
+                        ],
+                      ),
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CourseDetailPage(store: store, course: c))),
                     ),
                   ),
@@ -224,6 +241,16 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
         appBar: AppBar(
           title: Text(widget.course.shortname, overflow: TextOverflow.ellipsis),
           actions: [
+            IconButton(
+              tooltip: 'Exportar / compartilhar disciplina',
+              icon: const Icon(Icons.share_outlined),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => CourseExportPage(store: widget.store, course: widget.course),
+                ),
+              ),
+            ),
             IconButton(
               tooltip: _muted ? 'Reativar disciplina' : 'Silenciar disciplina',
               icon: Icon(_muted ? Icons.notifications_off : Icons.notifications_none),

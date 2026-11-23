@@ -82,6 +82,17 @@ Future<String> importData({required String jsonContent}) =>
 
 Future<void> wipeAllData() => RustLib.instance.api.crateApiSpofWipeAllData();
 
+Future<String> courseExportPreview({required PlatformInt64 courseId}) =>
+    RustLib.instance.api.crateApiSpofCourseExportPreview(courseId: courseId);
+
+Future<Uint8List> exportCoursePackage({required String selectionJson}) =>
+    RustLib.instance.api.crateApiSpofExportCoursePackage(
+      selectionJson: selectionJson,
+    );
+
+Future<String> importPackageFile({required String path}) =>
+    RustLib.instance.api.crateApiSpofImportPackageFile(path: path);
+
 /// Pareia com o PC a partir do conteúdo do QR code e já sincroniza. Devolve o `SyncResult` em JSON.
 Future<String> pair({required String code, required String device}) =>
     RustLib.instance.api.crateApiSpofPair(code: code, device: device);

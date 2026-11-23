@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/widgets.dart';
@@ -226,6 +227,34 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
     final j = jsonDecode(await rust.importData(jsonContent: json));
     await refresh();
     return '${j['courses_imported']} disciplinas, ${j['activities_imported']} atividades, '
+        '${j['outbox_items_imported']} entregas';
+  }
+
+  Future<CourseExportPreview> courseExportPreview(int courseId) async =>
+      CourseExportPreview.parse(await rust.courseExportPreview(courseId: courseId));
+
+  Future<Uint8List> exportCoursePackage({
+    required int courseId,
+    required List<int> activityIds,
+    List<int> includeSectionIds = const [],
+    bool includeFiles = true,
+  }) =>
+      rust.exportCoursePackage(
+        selectionJson: jsonEncode({
+          'course_id': courseId,
+          'activity_ids': activityIds,
+          'include_section_ids': includeSectionIds,
+          'include_files': includeFiles,
+        }),
+      );
+
+  /// Importa `.json` ou `.zip` a partir do caminho local e devolve um resumo.
+  Future<String> importPackageFile(String path) async {
+    final j = jsonDecode(await rust.importPackageFile(path: path));
+    await refresh();
+    final files = (j['files_imported'] as num?)?.toInt() ?? 0;
+    final filesPart = files > 0 ? ', $files arquivos offline' : '';
+    return '${j['courses_imported']} disciplinas, ${j['activities_imported']} atividades$filesPart, '
         '${j['outbox_items_imported']} entregas';
   }
 

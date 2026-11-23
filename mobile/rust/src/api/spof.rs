@@ -170,6 +170,24 @@ pub fn wipe_all_data() -> Res<()> {
     api::wipe_all_data(db()?)
 }
 
+pub fn course_export_preview(course_id: i64) -> Res<String> {
+    json(&api::course_export_preview(db()?, course_id)?)
+}
+
+pub fn export_course_package(selection_json: String) -> Res<Vec<u8>> {
+    let selection: spof_core::CourseExportSelection =
+        serde_json::from_str(&selection_json).map_err(|e| e.to_string())?;
+    api::export_course_package(db()?, &selection)
+}
+
+pub fn import_package_file(path: String) -> Res<String> {
+    json(&api::import_package_file(
+        db()?,
+        Path::new(&path),
+        CACHE_DIR.get().cloned(),
+    )?)
+}
+
 // ---------- Sincronização com o PC ----------
 
 /// Pareia com o PC a partir do conteúdo do QR code e já sincroniza. Devolve o `SyncResult` em JSON.

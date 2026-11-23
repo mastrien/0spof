@@ -135,3 +135,60 @@ class Proof {
         report = j['formatted_report'];
   static Proof parse(String raw) => Proof.fromJson(jsonDecode(raw));
 }
+
+class ExportItemPreview {
+  final int id, sectionId;
+  final String title, activityType;
+  final bool isMaterial, selectedByDefault, isPdf, hasLocalFile;
+  final String? fileName, contentMime, url;
+  final int? fileSizeBytes;
+  final DateTime? dueDate;
+
+  ExportItemPreview.fromJson(Map<String, dynamic> j)
+      : id = j['id'],
+        sectionId = j['section_id'],
+        title = j['title'],
+        activityType = j['activity_type'],
+        isMaterial = j['is_material'] ?? false,
+        selectedByDefault = j['selected_by_default'] ?? false,
+        isPdf = j['is_pdf'] ?? false,
+        hasLocalFile = j['has_local_file'] ?? false,
+        fileName = j['file_name'],
+        fileSizeBytes = j['file_size_bytes'],
+        contentMime = j['content_mime'],
+        url = j['url'],
+        dueDate = j['due_date'] == null ? null : DateTime.parse(j['due_date']).toLocal();
+}
+
+class ExportSectionPreview {
+  final int id;
+  final String name;
+  final String? summary;
+  final List<ExportItemPreview> items;
+
+  ExportSectionPreview.fromJson(Map<String, dynamic> j)
+      : id = j['id'],
+        name = j['name'],
+        summary = j['summary'],
+        items = (j['items'] as List)
+            .map((e) => ExportItemPreview.fromJson(e as Map<String, dynamic>))
+            .toList();
+}
+
+class CourseExportPreview {
+  final int courseId;
+  final String fullname, shortname, suggestedFilename;
+  final List<ExportSectionPreview> sections;
+
+  CourseExportPreview.fromJson(Map<String, dynamic> j)
+      : courseId = j['course_id'],
+        fullname = j['fullname'],
+        shortname = j['shortname'],
+        suggestedFilename = j['suggested_filename'],
+        sections = (j['sections'] as List)
+            .map((e) => ExportSectionPreview.fromJson(e as Map<String, dynamic>))
+            .toList();
+
+  static CourseExportPreview parse(String raw) =>
+      CourseExportPreview.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+}
