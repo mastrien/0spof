@@ -173,3 +173,21 @@ fn test_desktop_sync_report_and_storage_info_handlers() {
     assert_eq!(info.files_count, 0);
     assert_eq!(info.total_bytes, info.database_bytes);
 }
+
+#[test]
+fn test_desktop_search_handler() {
+    let db = Database::open_in_memory().unwrap();
+    db.upsert_course(&Course {
+        id: 1,
+        fullname: "Cálculo Diferencial".into(),
+        shortname: "CDI".into(),
+        summary: None,
+        last_synced_at: None,
+        is_muted: false,
+    })
+    .unwrap();
+    let hits = handle_search(&db, "calculo", None).unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].kind, "course");
+    assert!(handle_search(&db, "", None).unwrap().is_empty());
+}

@@ -195,6 +195,15 @@ pub fn get_storage_info(
 }
 
 #[tauri::command]
+pub fn search_local(
+    state: tauri::State<'_, Arc<AppState>>,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<crate::dto::SearchHitDto>, String> {
+    crate::commands::handle_search(&state.db, &query, limit)
+}
+
+#[tauri::command]
 pub fn get_app_version() -> String {
     handle_get_app_version()
 }

@@ -63,6 +63,12 @@
           <h1 id="tab-title">Visão geral</h1>
         </div>
         <div class="actions">
+          <div class="global-search" id="global-search" role="search">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="search" id="global-search-input" placeholder="Buscar tarefas, aulas…" aria-label="Buscar disciplinas, atividades e recursos" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="global-search-results">
+            <kbd>Ctrl K</kbd>
+            <div id="global-search-results" class="search-results" role="listbox" hidden></div>
+          </div>
           <button id="btn-refresh" class="btn btn-secondary btn-icon" title="Atualizar dados locais" aria-label="Atualizar dados locais">
             <svg class="btn-svg" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.5 0 4.9 1 6.7 2.7L21 8"/><path d="M21 3v5h-5"/></svg>
           </button>

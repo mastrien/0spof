@@ -66,6 +66,14 @@ pub fn handle_get_storage_info(
     api::storage_info(database)
 }
 
+pub fn handle_search(
+    database: &Database,
+    query: &str,
+    limit: Option<usize>,
+) -> Result<Vec<spof_core::api::dto::SearchHitDto>, String> {
+    api::search(database, query, limit)
+}
+
 pub fn handle_get_outbox_items(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
     api::outbox_history(database)
 }

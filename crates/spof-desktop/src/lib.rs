@@ -105,6 +105,7 @@ pub fn run() {
             ipc::get_app_version,
             ipc::get_last_sync_report,
             ipc::get_storage_info,
+            ipc::search_local,
             ipc::check_for_updates,
             ipc::install_update,
             ipc::get_sync_info,

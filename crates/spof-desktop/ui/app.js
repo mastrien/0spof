@@ -1626,6 +1626,114 @@ window.addEventListener("focus", async () => {
   await refreshData();
 });
 
+// ---------------------------------------------------------------------------
+// Busca global (Ctrl K): disciplinas, atividades e recursos, no banco local.
+// ---------------------------------------------------------------------------
+const searchInput = document.getElementById("global-search-input");
+const searchResults = document.getElementById("global-search-results");
+const SEARCH_KIND_LABELS = { course: "Disciplina", activity: "Atividade", resource: "Material" };
+let searchHits = [];
+let searchActive = -1;
+let searchTimer = null;
+let searchSeq = 0;
+
+function closeSearch() {
+  if (!searchResults) return;
+  searchResults.hidden = true;
+  searchInput.setAttribute("aria-expanded", "false");
+  searchActive = -1;
+}
+
+function highlightSearchActive() {
+  searchResults.querySelectorAll(".search-hit").forEach((el, i) => {
+    el.classList.toggle("active", i === searchActive);
+    if (i === searchActive) el.scrollIntoView({ block: "nearest" });
+  });
+}
+
+function renderSearchResults(query) {
+  if (searchHits.length === 0) {
+    searchResults.innerHTML = `<p class="search-empty">Nada encontrado para "${escapeHtml(query)}".</p>`;
+  } else {
+    searchResults.innerHTML = searchHits
+      .map(
+        (h, i) => `
+        <button type="button" class="search-hit" role="option" data-index="${i}">
+          <span class="chip ${h.kind === "course" ? "info" : h.kind === "resource" ? "ok" : "warn"}">${SEARCH_KIND_LABELS[h.kind] || h.kind}</span>
+          <span class="search-hit-main"><b>${escapeHtml(h.title)}</b><small>${escapeHtml(h.subtitle)}</small></span>
+        </button>`
+      )
+      .join("");
+    searchResults.querySelectorAll(".search-hit").forEach((el) => {
+      el.addEventListener("mousedown", (e) => e.preventDefault());
+      el.addEventListener("click", () => openSearchHit(searchHits[parseInt(el.getAttribute("data-index"), 10)]));
+    });
+  }
+  searchResults.hidden = false;
+  searchInput.setAttribute("aria-expanded", "true");
+  searchActive = searchHits.length ? 0 : -1;
+  highlightSearchActive();
+}
+
+async function runSearch() {
+  const query = searchInput.value.trim();
+  if (!query) {
+    closeSearch();
+    return;
+  }
+  const seq = ++searchSeq;
+  try {
+    const hits = await invoke("search_local", { query, limit: 12 });
+    if (seq !== searchSeq) return; // resposta antiga
+    searchHits = hits || [];
+    renderSearchResults(query);
+  } catch (err) {
+    console.error("Erro na busca:", err);
+  }
+}
+
+function openSearchHit(hit) {
+  if (!hit) return;
+  closeSearch();
+  searchInput.value = "";
+  switchTab("courses");
+  openCourseDetail(hit.course_id);
+}
+
+if (searchInput) {
+  searchInput.addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(runSearch, 120);
+  });
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (searchResults.hidden || searchHits.length === 0) return;
+      e.preventDefault();
+      const n = searchHits.length;
+      searchActive = (searchActive + (e.key === "ArrowDown" ? 1 : -1) + n) % n;
+      highlightSearchActive();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (!searchResults.hidden && searchHits[searchActive]) openSearchHit(searchHits[searchActive]);
+    } else if (e.key === "Escape") {
+      searchInput.value = "";
+      closeSearch();
+      searchInput.blur();
+    }
+  });
+  searchInput.addEventListener("focus", () => {
+    if (searchInput.value.trim()) runSearch();
+  });
+  searchInput.addEventListener("blur", () => setTimeout(closeSearch, 120));
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      searchInput.focus();
+      searchInput.select();
+    }
+  });
+}
+
 document.getElementById("btn-refresh").addEventListener("click", refreshData);
 updateHeading();
 refreshData();

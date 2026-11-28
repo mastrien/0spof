@@ -205,3 +205,20 @@ pub struct StorageInfoDto {
     pub files_count: usize,
     pub total_bytes: u64,
 }
+
+/// Resultado da busca global local.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SearchHitDto {
+    /// `course`, `activity` (tarefa, questionário, fórum…) ou `resource` (material).
+    pub kind: String,
+    pub id: i64,
+    pub title: String,
+    /// Sigla da disciplina e seção, para contexto.
+    pub subtitle: String,
+    pub course_id: i64,
+    pub course_short: String,
+    #[serde(default)]
+    pub activity_type: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+}

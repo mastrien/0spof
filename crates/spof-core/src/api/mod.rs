@@ -4,6 +4,7 @@
 //! Nada aqui imprime ou abre janelas.
 
 pub mod dto;
+pub mod search;
 pub mod sync_report;
 
 use crate::auth::{MoodleClient, MoodleSession};
@@ -230,6 +231,15 @@ pub async fn sync_moodle(
     let after = sync_report::snapshot(database);
     sync_report::record_sync_report(database, &summary, &before, &after);
     Ok(summary)
+}
+
+/// Busca global em disciplinas, atividades e recursos.
+pub fn search(
+    database: &Database,
+    query: &str,
+    limit: Option<usize>,
+) -> Result<Vec<dto::SearchHitDto>, String> {
+    search::search(database, query, limit)
 }
 
 /// Novidades da última sincronização (`None` se este aparelho ainda não sincronizou).
