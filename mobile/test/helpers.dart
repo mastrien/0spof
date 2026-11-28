@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:spof_mobile_app/models.dart';
 import 'package:spof_mobile_app/store.dart';
 import 'package:spof_mobile_app/theme.dart';
+import 'package:spof_mobile_app/updater.dart';
 
 Deadline deadline(int id, String? due, {bool submitted = false, String type = 'assign', String title = 'Tarefa'}) =>
     Deadline.fromJson({
@@ -86,12 +89,21 @@ class FakeStore extends Store {
   final calls = <({int assignId, String path, bool fetchTsa})>[];
   CourseExportPreview? preview;
   Object? enqueueError;
+  /// Quando definido, força `has_tsa_token` (simula a TSA fora do ar com `false`).
+  bool? tsaToken;
+  /// Quando definido, `enqueueSubmission` espera por ele (para ver o aviso "em andamento").
+  Completer<void>? gate;
+  UpdateCheck updateCheck = const UpdateCheck(UpdateStatus.upToDate);
+
+  @override
+  Future<UpdateCheck> runUpdateCheck() async => updateCheck;
 
   @override
   Future<EnqueueResult> enqueueSubmission(int assignId, String pickedPath, {bool fetchTsa = true}) async {
+    if (gate != null) await gate!.future;
     if (enqueueError != null) throw enqueueError!;
     calls.add((assignId: assignId, path: pickedPath, fetchTsa: fetchTsa));
-    return EnqueueResult.fromJson({'outbox_id': 7, 'file_hash': 'h', 'has_tsa_token': fetchTsa});
+    return EnqueueResult.fromJson({'outbox_id': 7, 'file_hash': 'h', 'has_tsa_token': tsaToken ?? fetchTsa});
   }
 
   @override
@@ -118,8 +130,13 @@ class FakeStore extends Store {
     paired.add(code);
   }
 
+  Object? unpairError;
+
   @override
-  Future<void> rustUnpair() async => unpairs++;
+  Future<void> rustUnpair() async {
+    if (unpairError != null) throw unpairError!;
+    unpairs++;
+  }
 
   @override
   Future<String> rustPeerInfo() async => peerJson;

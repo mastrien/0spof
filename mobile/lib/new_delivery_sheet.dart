@@ -230,7 +230,7 @@ class _NewDeliverySheetState extends State<_NewDeliverySheet> {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   title: const Text('Gerar carimbo de tempo', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                  subtitle: Text('Prova RFC 3161 de que o arquivo existia antes do prazo.',
+                  subtitle: Text('Tenta obter um token de tempo RFC 3161 (assinatura não verificada); se a autoridade estiver fora do ar, só o hash é registrado.',
                       style: TextStyle(fontSize: 12, height: 1.4, color: p.muted)),
                 ),
               ),
@@ -239,10 +239,10 @@ class _NewDeliverySheetState extends State<_NewDeliverySheet> {
                 style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
                 onPressed: (_path == null || _assignId == null || _busy) ? null : _submit,
                 child: Text(_busy
-                    ? 'Enfileirando…'
+                    ? 'Registrando…'
                     : _stamp
-                        ? 'Enfileirar com selo criptográfico'
-                        : 'Enfileirar sem carimbo'),
+                        ? 'Registrar entrega'
+                        : 'Registrar sem carimbo'),
               ),
             ],
           ],

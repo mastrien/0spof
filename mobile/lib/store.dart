@@ -38,6 +38,7 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
   String deviceName = 'Celular';
   Timer? _timer;
   AppUpdate? update;
+  UpdateStatus? updateStatus;
   int? updateProgress;
   String? updateError;
   final _secure = const FlutterSecureStorage();
@@ -66,9 +67,14 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> checkUpdate() async {
-    update = await AppUpdate.check();
+    final r = await runUpdateCheck();
+    update = r.update;
+    updateStatus = r.status;
     notifyListeners();
   }
+
+  @visibleForTesting
+  Future<UpdateCheck> runUpdateCheck() => AppUpdate.check();
 
   /// Baixa o APK (conferindo o sha256) e abre o instalador do sistema.
   void installUpdate() {
@@ -128,7 +134,10 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> restoreLastSync() async {
     try {
       final ms = int.tryParse(await _secure.read(key: _kLastSync) ?? '');
-      if (ms != null) pcLastSync = DateTime.fromMillisecondsSinceEpoch(ms);
+      // Valor negativo ou no futuro (relógio errado na hora de gravar) não é uma sync real.
+      if (ms != null && ms >= 0 && ms <= DateTime.now().millisecondsSinceEpoch) {
+        pcLastSync = DateTime.fromMillisecondsSinceEpoch(ms);
+      }
     } catch (_) {}
   }
 

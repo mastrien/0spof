@@ -11,10 +11,10 @@ import 'widgets.dart';
 /// Estado de cada etapa do comprovante.
 enum StageState { pending, done, active, error }
 
-const outboxStepNames = ['Registrado', 'Selo', 'Enviando', 'Confirmado'];
+const outboxStepNames = ['Registrado', 'Selo', 'Enviando', 'Enviada'];
 
 /// Mapeia o status do backend (`pending`, `in_flight`, `delivered`, `failed`)
-/// e a presença do selo RFC 3161 nas 4 etapas [Registrado, Selo, Enviando, Confirmado].
+/// e a presença do selo RFC 3161 nas 4 etapas [Registrado, Selo, Enviando, Enviada].
 List<StageState> outboxSteps(String status, bool hasToken) {
   const d = StageState.done, a = StageState.active, n = StageState.pending, e = StageState.error;
   final selo = hasToken ? d : n;
@@ -30,7 +30,7 @@ List<StageState> outboxSteps(String status, bool hasToken) {
 
 /// Rótulo da etapa atual, para leitores de tela.
 String outboxStepLabel(List<StageState> s) {
-  if (s.every((x) => x == StageState.done)) return 'Confirmado';
+  if (s.every((x) => x == StageState.done)) return 'Marcada como enviada';
   final err = s.indexOf(StageState.error);
   if (err >= 0) return 'Falha em ${outboxStepNames[err]}';
   final act = s.indexOf(StageState.active);
@@ -55,12 +55,12 @@ class OutboxPage extends StatelessWidget {
     final items = store.outbox;
     final hasPending = items.any((o) => o.status != 'delivered');
     final children = <Widget>[
-      const ScreenHeader(eyebrow: 'Envios protegidos', title: 'Entregas'),
+      const ScreenHeader(eyebrow: 'Registro local', title: 'Entregas'),
       if (hasPending && !store.session.authenticated)
         const InfoBanner(
           tone: Tone.warn,
           icon: Icons.cloud_off_outlined,
-          child: Text('Moodle desconectado · entre em Ajustes para enviar'),
+          child: Text('Moodle desconectado · o envio é manual, pelo site do Moodle'),
         )
       else
         const SizedBox(height: 14),
@@ -92,7 +92,7 @@ class _OutboxCard extends StatelessWidget {
     final String chipText;
     final Tone tone;
     if (delivered) {
-      chipText = 'Confirmado';
+      chipText = 'Marcada como enviada';
       tone = Tone.ok;
     } else if (failed) {
       chipText = 'Falhou';

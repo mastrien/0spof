@@ -30,7 +30,7 @@ O projeto é estruturado como um monorepo Cargo em Rust:
 
 - **Desenvolvimento Guiado por Testes (TDD):** Novas funcionalidades são acompanhadas de testes unitários e de integração antes da implementação.
 - **Quality Gate no CI:** Mínimo de 70% de cobertura de código obrigatória, com proibição de regressão.
-- **Privacidade & LGPD:** Os dados e credenciais pertencem ao usuário e permanecem estritamente em armazenamento local criptografado.
+- **Privacidade & LGPD:** Os dados e credenciais pertencem ao usuário e ficam só no aparelho dele. O banco SQLite não é cifrado (proteja o disco do computador); no celular, o cookie de sessão do Moodle fica no Keystore do Android.
 - **Prova de Existência Criptográfica:** Uso de token de carimbo de tempo (RFC 3161 / TSA) registrado junto ao hash do arquivo. O horário é apenas lido do token (assinatura não verificada) e não constitui prova de entrega.
 
 ---
@@ -82,6 +82,19 @@ de entregas não viajam.
 
 O tráfego é HTTP sem criptografia, protegido por token. Isso basta na rede de casa, mas não
 exponha a porta na internet. "Gerar novo código" troca o token e desconecta todos os celulares.
+
+## 🖥️ Desenvolvimento
+
+```sh
+cargo fmt --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+cargo run -p spof-desktop        # app desktop (Tauri; no Linux exige WebKitGTK)
+cd mobile && flutter pub get && flutter analyze && flutter test   # app Android (Flutter 3.44)
+```
+
+O app desktop traz busca local, resumo de novidades da última sincronização, uso de disco e
+exportação/importação de disciplinas (`.json` ou `.zip`).
 
 ## 🚀 Releases
 

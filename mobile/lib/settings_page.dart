@@ -7,6 +7,7 @@ import 'pair_page.dart';
 import 'screens.dart';
 import 'store.dart';
 import 'theme.dart';
+import 'updater.dart';
 import 'widgets.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -174,8 +175,8 @@ class SettingsPage extends StatelessWidget {
     children.add(dividedCard(context, [
       ListRow(
         title: _title(context, 'Versão ${store.version}'),
-        subtitle: _sub(context, up == null ? 'Você está na versão mais recente' : 'Atualização disponível'),
-        trailing: up == null ? const StatusChip('Atualizado', tone: Tone.ok) : const StatusChip('Nova versão', tone: Tone.info),
+        subtitle: _sub(context, updateSubtitle(store.updateStatus)),
+        trailing: updateChip(store.updateStatus),
       ),
     ]));
 
@@ -198,3 +199,20 @@ class SettingsPage extends StatelessWidget {
     );
   }
 }
+
+/// Texto da linha de versão: só afirma "mais recente" quando a checagem realmente disse isso.
+@visibleForTesting
+String updateSubtitle(UpdateStatus? status) => switch (status) {
+      UpdateStatus.available => 'Atualização disponível',
+      UpdateStatus.upToDate => 'Você está na versão mais recente',
+      UpdateStatus.failed => 'Não foi possível verificar atualizações',
+      UpdateStatus.unsupported => 'Atualização automática só no Android',
+      null => 'Verificando atualizações…',
+    };
+
+@visibleForTesting
+StatusChip? updateChip(UpdateStatus? status) => switch (status) {
+      UpdateStatus.available => const StatusChip('Nova versão', tone: Tone.info),
+      UpdateStatus.upToDate => const StatusChip('Atualizado', tone: Tone.ok),
+      _ => null,
+    };

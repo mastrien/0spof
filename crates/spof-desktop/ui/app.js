@@ -1030,7 +1030,7 @@ async function loadCourses() {
     syncCourseToolbar();
     renderCourses();
   } catch (err) {
-    container.innerHTML = `<p class="error">Erro ao listar cursos: ${err}</p>`;
+    container.innerHTML = `<p class="error">Erro ao listar cursos: ${escapeHtml(String(err))}</p>`;
   }
 }
 

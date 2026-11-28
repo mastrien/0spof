@@ -192,6 +192,9 @@ impl Database {
             VACUUM;
             "#,
         )?;
+        drop(connection);
+        // Relatório que não coube no banco só existe em memória; apagar tudo inclui ele.
+        self.set_unsaved_sync_report(None);
         Ok(())
     }
 }
