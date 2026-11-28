@@ -81,22 +81,23 @@ impl SubmissionProof {
     pub fn formatted_report(&self) -> String {
         format!(
             r#"================================================================================
-0spof - COMPROVANTE CRIPTOGRÁFICO DE CONCLUSÃO DE TAREFA
+0spof - COMPROVANTE CRIPTOGRÁFICO DE REGISTRO LOCAL DE ARQUIVO
 ================================================================================
 ID da Tarefa:              {}
 Nome do Arquivo:           {}
 Checksum SHA-256:          {}
-Registro de Conclusão:     {} (UTC)
-Carimbo de Tempo RFC 3161: {} (Tamanho: {} bytes)
+Registrado localmente em:  {} (UTC)
+Token RFC 3161:            {} (Tamanho: {} bytes)
 Horário lido do token:     {}
 Prazo da Tarefa:           {}
 Folga em relação ao prazo: {}
 Status na fila local:      {}
 ================================================================================
-Este relatório registra o hash do arquivo e, quando presente, o token de carimbo
-de tempo RFC 3161 obtido da autoridade. O horário é apenas lido do token: a
-ASSINATURA NÃO É VERIFICADA por este aplicativo; valide o token com ferramenta
-própria (ex.: openssl ts -verify) antes de usá-lo como prova.
+Este documento NÃO comprova entrega ao Moodle. Ele registra o hash do arquivo
+neste computador e, quando presente, o token RFC 3161 obtido da autoridade de
+carimbo. O horário é apenas lido do token: a ASSINATURA NÃO É VERIFICADA por
+este aplicativo. A entrega ao Moodle é feita por você, fora do 0spof; valide o
+token com ferramenta própria (ex.: openssl ts -verify) antes de apresentá-lo.
 ================================================================================"#,
             self.assign_id,
             self.filename,
@@ -125,7 +126,12 @@ própria (ex.: openssl ts -verify) antes de usá-lo como prova.
                 ),
                 None => "indeterminada".to_string(),
             },
-            self.status.as_str()
+            match self.status {
+                OutboxStatus::Pending => "registrado localmente (aguardando envio manual)",
+                OutboxStatus::InFlight => "marcado como em envio",
+                OutboxStatus::Delivered => "marcado como enviado",
+                OutboxStatus::Failed => "falha registrada",
+            }
         )
     }
 }
@@ -300,6 +306,49 @@ mod tests {
         let p2 = SubmissionProof::from_outbox_item(&no_token).with_due_date(Some(due2));
         assert!(p2.timestamped_at.is_none());
         assert_eq!(p2.margin_seconds(), Some(3 * 3_600));
+    }
+
+    #[test]
+    fn test_report_never_claims_validity_or_delivery() {
+        let mut token = vec![0x18, 0x0f];
+        token.extend_from_slice(b"20261128100000Z");
+        for status in [
+            OutboxStatus::Pending,
+            OutboxStatus::InFlight,
+            OutboxStatus::Delivered,
+            OutboxStatus::Failed,
+        ] {
+            for with_token in [true, false] {
+                let mut item = item_with_token(with_token.then(|| token.clone()));
+                item.status = status.clone();
+                let report = SubmissionProof::from_outbox_item(&item)
+                    .with_due_date(Some(item.created_at))
+                    .formatted_report();
+                let lower = report.to_lowercase();
+                for banned in [
+                    "atesta",
+                    "válido",
+                    "valido",
+                    "conclusão",
+                    "conclusao",
+                    "confirmad",
+                    "comprova entrega",
+                    "assinado pela autoridade",
+                    "delivered",
+                    "pending",
+                ] {
+                    // a única menção permitida é a negação explícita
+                    let ok_negation =
+                        banned == "comprova entrega" && lower.contains("não comprova entrega");
+                    assert!(
+                        !lower.contains(banned) || ok_negation,
+                        "relatório contém '{banned}':\n{report}"
+                    );
+                }
+                assert!(report.contains("NÃO comprova entrega"));
+                assert!(report.contains("ASSINATURA NÃO É VERIFICADA"));
+            }
+        }
     }
 
     #[test]

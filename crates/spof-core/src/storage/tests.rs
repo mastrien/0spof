@@ -343,3 +343,53 @@ fn test_outbox_queries_share_row_mapping() {
     assert_eq!(db.get_outbox_item(id2).unwrap().unwrap(), all[1]);
     assert!(db.get_outbox_item(12345).unwrap().is_none());
 }
+
+#[test]
+fn test_due_dates_lookup_covers_more_than_one_batch() {
+    use chrono::Duration;
+    let db = Database::open_in_memory().unwrap();
+    db.upsert_course(&crate::models::Course {
+        id: 1,
+        fullname: "C".into(),
+        shortname: "C".into(),
+        summary: None,
+        last_synced_at: None,
+        is_muted: false,
+    })
+    .unwrap();
+    db.upsert_section(&crate::models::Section {
+        id: 10,
+        course_id: 1,
+        name: "S".into(),
+        summary: None,
+        activities: vec![],
+    })
+    .unwrap();
+    let base = chrono::Utc::now() + Duration::days(1);
+    // 1200 ids: 3 lotes (500 + 500 + 200); cada atividade tem um prazo diferente
+    for id in 1..=1200i64 {
+        db.upsert_activity(&crate::models::Activity {
+            id,
+            section_id: 10,
+            title: format!("A{id}"),
+            activity_type: crate::models::ActivityType::Assign,
+            url: None,
+            description: None,
+            local_file_path: None,
+            content_mime: None,
+            due_date: Some(base + Duration::minutes(id)),
+            is_submitted: false,
+        })
+        .unwrap();
+    }
+    let ids: Vec<i64> = (1..=1200).collect();
+    let dues = db.get_activity_due_dates(&ids).unwrap();
+    assert_eq!(dues.len(), 1200, "nenhum lote pode ser perdido");
+    // bordas dos lotes
+    for id in [1i64, 500, 501, 1000, 1001, 1200] {
+        assert_eq!(dues[&id], dues[&1] + Duration::minutes(id - 1), "id {id}");
+    }
+    // mistura de ids válidos e inexistentes entre lotes
+    let mixed: Vec<i64> = (400..=700).chain(5000..5100).collect();
+    assert_eq!(db.get_activity_due_dates(&mixed).unwrap().len(), 301);
+}

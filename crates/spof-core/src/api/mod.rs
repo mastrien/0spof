@@ -125,11 +125,12 @@ pub fn course_details(database: &Database, course_id: i64) -> Result<Vec<Section
 fn outbox_item_dtos(
     database: &Database,
     items: Vec<crate::models::OutboxItem>,
-) -> Vec<OutboxItemDto> {
-    // um único SELECT para todos os prazos (em vez de um por item)
+) -> Result<Vec<OutboxItemDto>, String> {
+    // um único SELECT para todos os prazos (em vez de um por item); erro de leitura é
+    // propagado em vez de esconder a folga em silêncio
     let ids: Vec<i64> = items.iter().map(|i| i.assign_id).collect();
-    let dues = database.get_activity_due_dates(&ids).unwrap_or_default();
-    items
+    let dues = database.get_activity_due_dates(&ids).map_err(err)?;
+    Ok(items
         .into_iter()
         .map(|item| {
             let due = dues.get(&item.assign_id).copied();
@@ -151,19 +152,19 @@ fn outbox_item_dtos(
                 margin_seconds: proof.margin_seconds(),
             }
         })
-        .collect()
+        .collect())
 }
 
 /// Itens ainda a enviar (pendentes ou com falha). Usado pelo celular e pelos contadores.
 pub fn outbox_items(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
     let items = database.get_pending_outbox_items().map_err(err)?;
-    Ok(outbox_item_dtos(database, items))
+    outbox_item_dtos(database, items)
 }
 
 /// Fila completa, inclusive itens já entregues (linha do tempo do desktop).
 pub fn outbox_history(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
     let items = database.get_all_outbox_items().map_err(err)?;
-    Ok(outbox_item_dtos(database, items))
+    outbox_item_dtos(database, items)
 }
 
 pub async fn enqueue_submission(
@@ -632,5 +633,25 @@ mod tests {
         assert!(file_info("/nao/existe.pdf")
             .unwrap_err()
             .contains("não encontrado"));
+    }
+
+    #[test]
+    fn outbox_listing_propagates_due_date_lookup_errors() {
+        let db = Database::open_in_memory().unwrap();
+        db.insert_outbox_item(&crate::models::OutboxItem::new(
+            1,
+            "a".into(),
+            "h".into(),
+            "/a".into(),
+        ))
+        .unwrap();
+        assert!(outbox_items(&db).is_ok());
+        db.conn
+            .lock()
+            .unwrap()
+            .execute("DROP TABLE activities", [])
+            .unwrap();
+        assert!(outbox_items(&db).is_err());
+        assert!(outbox_history(&db).is_err());
     }
 }

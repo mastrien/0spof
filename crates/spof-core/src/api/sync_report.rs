@@ -107,16 +107,23 @@ pub fn diff_snapshots(before: &Snapshot, after: &Snapshot) -> Vec<SyncChangeDto>
 
 /// Monta o relatório e o grava como "última sincronização".
 ///
-/// - `before` vazio: primeira sincronização, então nada é "novidade" (`first_sync`).
-/// - `before`/`after` ausentes (erro de leitura): grava sem novidades e marca `comparison_failed`.
+/// Critério de `first_sync`: o retrato "antes" está vazio **e** não existe relatório anterior
+/// em `app_meta` (este aparelho nunca sincronizou este banco). Assim, um banco que já
+/// sincronizou antes, mesmo com zero atividades, não é tratado como primeira sync: o que
+/// aparecer depois conta como novidade. `wipe_all_data` apaga o relatório, então apagar tudo
+/// e sincronizar de novo volta a ser "primeira sincronização".
+///
+/// Se `before`/`after` faltarem (erro de leitura), grava sem novidades e marca
+/// `comparison_failed`, em vez de tratar tudo como novo.
 pub fn record_sync_report(
     database: &Database,
     summary: &SyncSummaryDto,
     before: Option<&Snapshot>,
     after: Option<&Snapshot>,
 ) -> SyncReportDto {
+    let had_previous_report = matches!(database.meta_get(LAST_SYNC_REPORT_KEY), Ok(Some(_)));
     let (changes, first_sync, comparison_failed) = match (before, after) {
-        (Some(b), Some(_)) if b.is_empty() => (Vec::new(), true, false),
+        (Some(b), Some(_)) if b.is_empty() && !had_previous_report => (Vec::new(), true, false),
         (Some(b), Some(a)) => (diff_snapshots(b, a), false, false),
         _ => (Vec::new(), false, true),
     };
@@ -303,6 +310,37 @@ mod tests {
         assert_eq!(report.changes_total, 0);
         assert!(report.changes.is_empty());
         assert!(last_sync_report(&db).unwrap().unwrap().first_sync);
+    }
+
+    #[test]
+    fn empty_database_that_already_synced_is_not_a_first_sync() {
+        let db = Database::open_in_memory().unwrap();
+        // 1ª sync: banco vazio, sem nada para comparar
+        let empty = Snapshot::new();
+        let first = record_sync_report(&db, &summary(), Some(&empty), Some(&empty));
+        assert!(first.first_sync);
+        // 2ª sync: continuava com zero atividades, e agora chegam 3
+        let mut after = Snapshot::new();
+        for i in 0..3 {
+            after.insert(i, snap(&format!("N{i}"), "resource", None, false));
+        }
+        let second = record_sync_report(&db, &summary(), Some(&empty), Some(&after));
+        assert!(!second.first_sync, "já havia relatório anterior");
+        assert_eq!(second.changes_total, 3);
+    }
+
+    #[test]
+    fn wipe_resets_first_sync_marker() {
+        let db = Database::open_in_memory().unwrap();
+        let empty = Snapshot::new();
+        record_sync_report(&db, &summary(), Some(&empty), Some(&empty));
+        assert!(last_sync_report(&db).unwrap().is_some());
+        db.wipe_all_data().unwrap();
+        assert!(last_sync_report(&db).unwrap().is_none());
+        let mut after = Snapshot::new();
+        after.insert(1, snap("X", "resource", None, false));
+        let r = record_sync_report(&db, &summary(), Some(&empty), Some(&after));
+        assert!(r.first_sync);
     }
 
     #[test]
