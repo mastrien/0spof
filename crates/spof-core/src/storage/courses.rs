@@ -350,6 +350,7 @@ impl Database {
         // limite de variáveis do SQLite: processa em blocos
         for chunk in ids.chunks(batch_size.max(1)) {
             queries += 1;
+            self.count_due_date_query();
             let placeholders = vec!["?"; chunk.len()].join(",");
             let mut statement = connection.prepare(&format!(
                 "SELECT id, due_date FROM activities WHERE due_date IS NOT NULL AND id IN ({placeholders})"

@@ -229,10 +229,16 @@ pub async fn sync_moodle(
         sections_synced: result.sections_synced,
         activities_synced: result.activities_synced,
         resources_cached: result.resources_cached,
+        report_save_error: None,
     };
     let after = sync_report::snapshot(database).ok();
-    sync_report::record_sync_report(database, &summary, before.as_ref(), after.as_ref());
-    Ok(summary)
+    // a falha ao gravar o resumo não derruba a sync, mas volta em `report_save_error`
+    Ok(sync_report::finish_sync(
+        database,
+        summary,
+        before.as_ref(),
+        after.as_ref(),
+    ))
 }
 
 /// Confere que o caminho é um arquivo legível e devolve nome e tamanho (para a tela de entrega).

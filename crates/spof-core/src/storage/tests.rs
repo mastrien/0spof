@@ -410,3 +410,14 @@ fn test_due_dates_lookup_slices_ids_into_batches() {
     // o lote de produção precisa caber no limite de variáveis do SQLite
     const { assert!(super::courses::DUE_DATES_BATCH <= 999) };
 }
+
+#[test]
+fn test_public_due_dates_lookup_uses_the_production_batch_size() {
+    let db = Database::open_in_memory().unwrap();
+    let n = super::courses::DUE_DATES_BATCH * 2 + 1;
+    let ids: Vec<i64> = (1..=n as i64).collect();
+    let before = db.due_date_query_count();
+    db.get_activity_due_dates(&ids).unwrap();
+    // 2 lotes cheios + 1 resto; sem fatiamento (ou com lote enorme) seria 1 consulta
+    assert_eq!(db.due_date_query_count() - before, 3);
+}

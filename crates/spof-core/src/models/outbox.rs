@@ -77,6 +77,8 @@ impl OutboxItem {
         }
     }
 
+    /// Reservado para um futuro worker de envio: nenhum código de produção tenta reenviar
+    /// itens hoje, e `retry_count` só muda em `record_failure` (testes/importações).
     pub fn can_retry(&self, max_retries: u32) -> bool {
         self.status != OutboxStatus::Delivered && self.retry_count < max_retries
     }

@@ -74,7 +74,7 @@ pub struct OutboxItemDto {
     /// Prazo da tarefa no Moodle (RFC 3339), se sincronizado.
     #[serde(default)]
     pub due_date: Option<String>,
-    /// Folga em segundos entre o selo e o prazo (negativa = selado após o prazo).
+    /// Folga em segundos entre o horário do token (ou do registro local) e o prazo; negativa = registrado após o prazo.
     #[serde(default)]
     pub margin_seconds: Option<i64>,
 }
@@ -106,6 +106,9 @@ pub struct SyncSummaryDto {
     pub sections_synced: usize,
     pub activities_synced: usize,
     pub resources_cached: usize,
+    /// Falha ao gravar o resumo "novidades" da sync (a sincronização em si deu certo).
+    #[serde(default)]
+    pub report_save_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

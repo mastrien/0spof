@@ -140,7 +140,8 @@ pub fn record_sync_report(
         comparison_failed,
         save_error: None,
     };
-    // falha de gravação não derruba a sincronização, mas fica visível no relatório devolvido
+    // Falha de gravação não derruba a sincronização. O relatório (com `save_error`) fica em
+    // memória no `Database` e é o que `last_sync_report` devolve até a próxima gravação boa.
     let save_error = serde_json::to_string(&report)
         .map_err(|e| e.to_string())
         .and_then(|json| {
@@ -149,18 +150,43 @@ pub fn record_sync_report(
                 .map_err(|e| e.to_string())
         })
         .err();
-    SyncReportDto {
+    let report = SyncReportDto {
         save_error,
         ..report
-    }
+    };
+    database.set_unsaved_sync_report(match report.save_error {
+        Some(_) => serde_json::to_string(&report).ok(),
+        None => None,
+    });
+    report
 }
 
 /// Relatório da última sincronização feita neste aparelho (`None` se nunca sincronizou).
 pub fn last_sync_report(database: &Database) -> Result<Option<SyncReportDto>, String> {
+    if let Some(unsaved) = database.unsaved_sync_report() {
+        if let Ok(report) = serde_json::from_str(&unsaved) {
+            return Ok(Some(report));
+        }
+    }
     let raw = database
         .meta_get(LAST_SYNC_REPORT_KEY)
         .map_err(|e| e.to_string())?;
     Ok(raw.and_then(|json| serde_json::from_str(&json).ok()))
+}
+
+/// Fecha a sincronização: grava o relatório de novidades e devolve o resumo, levando junto
+/// qualquer falha de gravação (`report_save_error`) para a interface avisar o usuário.
+pub fn finish_sync(
+    database: &Database,
+    summary: SyncSummaryDto,
+    before: Option<&Snapshot>,
+    after: Option<&Snapshot>,
+) -> SyncSummaryDto {
+    let report = record_sync_report(database, &summary, before, after);
+    SyncSummaryDto {
+        report_save_error: report.save_error,
+        ..summary
+    }
 }
 
 /// Espaço usado: banco SQLite (páginas alocadas) + arquivos baixados referenciados pelas atividades.
@@ -284,6 +310,7 @@ mod tests {
             sections_synced: 5,
             activities_synced: 12,
             resources_cached: 3,
+            report_save_error: None,
         }
     }
 
@@ -369,6 +396,44 @@ mod tests {
         let ok_db = Database::open_in_memory().unwrap();
         let ok = record_sync_report(&ok_db, &summary(), Some(&empty), Some(&empty));
         assert!(ok.save_error.is_none());
+    }
+
+    fn break_meta(db: &Database) {
+        db.conn
+            .lock()
+            .unwrap()
+            .execute("DROP TABLE app_meta", [])
+            .unwrap();
+    }
+
+    #[test]
+    fn save_error_reaches_last_report_and_summary_and_clears_after_a_good_save() {
+        let db = Database::open_in_memory().unwrap();
+        let empty = Snapshot::new();
+        break_meta(&db);
+
+        // fluxo de produção: finish_sync -> resumo da sync
+        let finished = finish_sync(&db, summary(), Some(&empty), Some(&empty));
+        assert!(finished.report_save_error.is_some());
+        // e o que o desktop lê depois (get_last_sync_report)
+        let read = last_sync_report(&db)
+            .unwrap()
+            .expect("relatório em memória");
+        assert!(read.save_error.is_some());
+        assert_eq!(read.save_error, finished.report_save_error);
+
+        // banco recuperado: próxima sync grava e o aviso some
+        db.conn
+            .lock()
+            .unwrap()
+            .execute(
+                "CREATE TABLE app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+                [],
+            )
+            .unwrap();
+        let ok = finish_sync(&db, summary(), Some(&empty), Some(&empty));
+        assert!(ok.report_save_error.is_none());
+        assert!(last_sync_report(&db).unwrap().unwrap().save_error.is_none());
     }
 
     #[test]

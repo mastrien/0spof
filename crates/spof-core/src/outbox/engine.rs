@@ -71,7 +71,7 @@ impl SubmissionProof {
         self.timestamped_at.unwrap_or(self.queued_at)
     }
 
-    /// Folga em segundos entre o selo e o prazo (negativa se foi selado depois do prazo).
+    /// Folga em segundos entre o horário do token (ou do registro local) e o prazo; negativa se o registro foi posterior ao prazo.
     pub fn margin_seconds(&self) -> Option<i64> {
         self.due_date
             .map(|due| (due - self.sealed_at()).num_seconds())
@@ -169,14 +169,16 @@ impl OutboxEngine {
         self
     }
 
-    /// Calculates exponential backoff with exponential factor 2^retry_count.
+    /// Backoff exponencial 2^retry_count. ATENÇÃO: hoje não existe laço de retentativa nem envio
+    /// ao Moodle; esta função (e `max_retries`) só é usada em testes, reservada para um futuro
+    /// worker de envio.
     pub fn calculate_backoff(&self, retry_count: u32) -> Duration {
         let factor = 2u64.saturating_pow(retry_count.min(6));
         Duration::from_secs(self.base_backoff_secs.saturating_mul(factor))
     }
 
     /// Enqueues a local file into the outbox for an assignment.
-    /// Calculates the file's SHA-256 hash and optionally seals it with an RFC 3161 TSA timestamp.
+    /// Calcula o hash SHA-256 do arquivo e, opcionalmente, obtém um token de tempo RFC 3161 da TSA.
     pub async fn enqueue_file<P: AsRef<Path>>(
         &self,
         assign_id: i64,

@@ -224,3 +224,24 @@ fn test_desktop_outbox_handler_returns_history_including_delivered() {
     // contador de pendentes segue contando só o que falta enviar
     assert_eq!(handle_get_system_status(&db).unwrap().outbox_count, 1);
 }
+
+#[test]
+fn test_desktop_last_sync_report_carries_save_error() {
+    use spof_core::api::dto::SyncReportDto;
+    let db = Database::open_in_memory().unwrap();
+    let report = SyncReportDto {
+        synced_at: "2026-11-28T00:00:00+00:00".into(),
+        courses_synced: 1,
+        sections_synced: 1,
+        activities_synced: 1,
+        resources_cached: 0,
+        changes_total: 0,
+        changes: vec![],
+        first_sync: true,
+        comparison_failed: false,
+        save_error: Some("disco cheio".into()),
+    };
+    db.set_unsaved_sync_report(Some(serde_json::to_string(&report).unwrap()));
+    let read = handle_get_last_sync_report(&db).unwrap().unwrap();
+    assert_eq!(read.save_error.as_deref(), Some("disco cheio"));
+}
