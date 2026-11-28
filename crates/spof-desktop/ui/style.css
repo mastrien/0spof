@@ -1060,6 +1060,11 @@ h3 {
   display: none;
 }
 
+.sync-warn {
+  color: var(--warn-ink);
+  font-size: 12px;
+}
+
 .sync-detail,
 .sync-more {
   color: var(--muted);

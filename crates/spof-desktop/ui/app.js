@@ -726,7 +726,11 @@ function renderSyncReport(lastIso) {
         (c) =>
           `<li><b>${escapeHtml(SYNC_CHANGE_LABELS[c.kind] || c.kind)}</b> em <b>${escapeHtml(c.course_short)}</b> — ${escapeHtml(c.title)}${c.detail ? ` <span class="sync-detail">(${escapeHtml(c.detail)})</span>` : ""}</li>`
       )
-      .join("") + (extra > 0 ? `<li class="sync-more">+ ${extra} ${extra === 1 ? "outra novidade" : "outras novidades"}</li>` : "");
+      .join("") +
+    (report && report.save_error
+      ? `<li class="sync-warn">Não foi possível guardar este resumo: ${escapeHtml(report.save_error)}</li>`
+      : "") +
+    (extra > 0 ? `<li class="sync-more">+ ${extra} ${extra === 1 ? "outra novidade" : "outras novidades"}</li>` : "");
 }
 
 // "2 dias e 13 h", "5 h 10 min" ou "42 min" a partir de segundos.
@@ -741,7 +745,7 @@ function formatMargin(totalSecs) {
 }
 
 // Etapas da linha do tempo, com os horários reais expostos pelo backend.
-// O 0spof registra e sela o arquivo localmente; o envio ao Moodle é manual e não é rastreado aqui.
+// O 0spof registra o arquivo localmente (hash e token de tempo); o envio ao Moodle é manual e não é rastreado aqui.
 function outboxSteps(item) {
   const delivered = item.status === "delivered";
   const failed = item.status === "failed";
@@ -773,7 +777,7 @@ function outboxSteps(item) {
           ? { state: "active", title: "Marcado como em envio", sub: "" }
           : { state: "active", title: "Aguardando envio manual", sub: "Entregue o arquivo pelo site do Moodle" },
     delivered
-      ? { state: "done", title: "Confirmação", sub: when(item.updated_at) }
+      ? { state: "done", title: "Marcado como confirmado", sub: join(when(item.updated_at), "confirmação do Moodle não acompanhada pelo 0spof") }
       : { state: "todo", title: "Confirmação do Moodle", sub: "Não acompanhada pelo 0spof" },
   ];
 }
@@ -1745,7 +1749,7 @@ btnSync.addEventListener("click", async () => {
       alert("Sincronização concluída, mas nenhum curso foi encontrado. Verifique seu login no Moodle.");
     } else {
       alert(
-        `Sincronização concluída com sucesso!\nCursos atualizados: ${summary.courses_synced}\nSeções indexadas: ${summary.sections_synced}\nAtividades catalogadas: ${summary.activities_synced}\nArquivos/PDFs cacheados offline: ${summary.resources_cached || 0}`
+        `Sincronização concluída com sucesso!\nCursos atualizados: ${summary.courses_synced}\nSeções indexadas: ${summary.sections_synced}\nAtividades catalogadas: ${summary.activities_synced}\nArquivos/PDFs cacheados offline: ${summary.resources_cached || 0}${summary.report_save_error ? `\nAviso: não foi possível guardar o resumo de novidades (${summary.report_save_error}).` : ""}`
       );
     }
     await refreshData();
