@@ -581,28 +581,52 @@ function renderProtect() {
   if (line) line.innerText = last ? `Última sincronização ${relativeTime(last)} · ${formatDate(last)}` : "Ainda não sincronizado.";
 }
 
-// Etapas da linha do tempo, derivadas apenas dos campos que o backend expõe.
+// "2 dias e 13 h", "5 h 10 min" ou "42 min" a partir de segundos.
+function formatMargin(totalSecs) {
+  const secs = Math.abs(totalSecs);
+  const days = Math.floor(secs / 86400);
+  const hours = Math.floor((secs % 86400) / 3600);
+  const mins = Math.floor((secs % 3600) / 60);
+  if (days > 0) return `${days} ${days === 1 ? "dia" : "dias"} e ${hours} h`;
+  if (hours > 0) return `${hours} h ${mins} min`;
+  return `${mins} min`;
+}
+
+// Etapas da linha do tempo, com os horários reais expostos pelo backend.
 function outboxSteps(item) {
   const delivered = item.status === "delivered";
   const failed = item.status === "failed";
   const inFlight = item.status === "in_flight";
   const tries = item.retry_count || 0;
+  const when = (iso) => (iso ? formatDate(iso) : "");
+  const join = (...parts) => parts.filter(Boolean).join(" · ");
   return [
-    { state: "done", title: "Arquivo registrado", sub: "Hash SHA-256 calculado e guardado localmente" },
+    { state: "done", title: "Arquivo registrado", sub: join(when(item.created_at), "hash SHA-256 guardado") },
     item.has_rfc3161_token
-      ? { state: "done", title: "Selo RFC 3161 emitido", sub: "Prova de existência do arquivo anexada" }
+      ? { state: "done", title: "Selo RFC 3161 emitido", sub: join(when(item.timestamped_at || item.created_at), "TSA") }
       : { state: "todo", title: "Sem selo de tempo", sub: "Não solicitado ou autoridade indisponível" },
     delivered
-      ? { state: "done", title: "Enviado ao Moodle", sub: "Entrega concluída" }
+      ? { state: "done", title: "Enviado ao Moodle", sub: when(item.last_attempt_at) }
       : failed
-        ? { state: "fail", title: "Falha no envio", sub: `${tries} ${tries === 1 ? "tentativa" : "tentativas"} · será repetido` }
+        ? {
+            state: "fail",
+            title: "Falha no envio",
+            sub: join(`${tries} ${tries === 1 ? "tentativa" : "tentativas"}`, when(item.last_attempt_at), item.last_error),
+          }
         : inFlight
           ? { state: "active", title: "Enviando ao Moodle", sub: "Transferência em andamento" }
           : { state: "active", title: "Enviando ao Moodle", sub: "Aguardando conexão" },
     delivered
-      ? { state: "done", title: "Confirmado", sub: "Confirmado pelo Moodle" }
+      ? { state: "done", title: "Confirmado", sub: when(item.updated_at) }
       : { state: "todo", title: "Confirmado", sub: "" },
   ];
+}
+
+function marginText(item) {
+  if (item.margin_seconds === null || item.margin_seconds === undefined) return "";
+  return item.margin_seconds >= 0
+    ? `Selado antes do prazo · ${formatMargin(item.margin_seconds)} de folga`
+    : `Selado ${formatMargin(item.margin_seconds)} depois do prazo`;
 }
 
 function outboxStatusText(item) {
@@ -625,11 +649,12 @@ function outboxChip(item) {
 function renderMiniOutbox() {
   const box = document.getElementById("dashboard-outbox-list");
   if (!box) return;
-  if (state.outbox.length === 0) {
+  const open = state.outbox.filter((i) => i.status !== "delivered");
+  if (open.length === 0) {
     box.innerHTML = `<p class="muted-line">Nenhum envio na fila.</p>`;
     return;
   }
-  box.innerHTML = state.outbox
+  box.innerHTML = open
     .slice(0, 3)
     .map((item) => {
       const bars = outboxSteps(item)
@@ -1234,7 +1259,12 @@ function renderOutbox() {
     if (detail) detail.style.display = "none";
     return;
   }
-  const items = state.outbox;
+  // Itens a enviar primeiro; entregues por último (mais recentes antes).
+  const items = [...state.outbox].sort((a, b) => {
+    const da = a.status === "delivered" ? 1 : 0;
+    const db = b.status === "delivered" ? 1 : 0;
+    return da - db || b.id - a.id;
+  });
   if (items.length === 0) {
     container.innerHTML = "<p class='empty-state'>Nenhuma tarefa na fila de envio.</p>";
     if (detail) detail.style.display = "none";
@@ -1293,8 +1323,12 @@ function renderOutbox() {
           </div>
           <div>
             <div class="fact-label">Selo de tempo</div>
-            <div class="fact-value">${sel.has_rfc3161_token ? "Carimbo RFC 3161 anexado ao arquivo" : "Nenhum carimbo anexado"}</div>
+            <div class="fact-value">${sel.has_rfc3161_token ? `Carimbo RFC 3161${sel.timestamped_at ? ` emitido em ${escapeHtml(formatDate(sel.timestamped_at))}` : " anexado ao arquivo"}` : "Nenhum carimbo anexado"}</div>
           </div>
+          ${sel.due_date ? `<div>
+            <div class="fact-label">Prazo da tarefa</div>
+            <div class="fact-value">${escapeHtml(formatDueLong(sel.due_date))}${marginText(sel) ? `<br>${escapeHtml(marginText(sel))}` : ""}</div>
+          </div>` : ""}
           <div>
             <div class="fact-label">Tarefa no Moodle</div>
             <div class="fact-value">#${sel.assign_id}${state.activities.get(sel.assign_id) ? ` · ${escapeHtml(state.activities.get(sel.assign_id).title)}` : ""}</div>

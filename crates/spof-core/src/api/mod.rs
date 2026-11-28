@@ -7,7 +7,7 @@ pub mod dto;
 
 use crate::auth::{MoodleClient, MoodleSession};
 use crate::crawler::{default_cache_dir, CourseCrawler};
-use crate::outbox::OutboxEngine;
+use crate::outbox::{OutboxEngine, SubmissionProof};
 use crate::storage::{
     is_material_activity, is_pdf_activity, suggested_course_export_filename, CourseExportSelection,
     Database, ImportSummary,
@@ -120,19 +120,46 @@ pub fn course_details(database: &Database, course_id: i64) -> Result<Vec<Section
         .collect())
 }
 
+fn outbox_item_dto(database: &Database, item: crate::models::OutboxItem) -> OutboxItemDto {
+    let due = database
+        .get_activity(item.assign_id)
+        .ok()
+        .flatten()
+        .and_then(|a| a.due_date);
+    let proof = SubmissionProof::from_outbox_item(&item).with_due_date(due);
+    OutboxItemDto {
+        id: item.id.unwrap_or(0),
+        assign_id: item.assign_id,
+        filename: item.filename,
+        file_hash: item.file_hash,
+        status: item.status.as_str().to_string(),
+        retry_count: item.retry_count,
+        has_rfc3161_token: item.rfc3161_token.is_some(),
+        created_at: item.created_at.to_rfc3339(),
+        updated_at: item.updated_at.to_rfc3339(),
+        last_attempt_at: item.last_attempt_at.map(|t| t.to_rfc3339()),
+        last_error: item.last_error,
+        timestamped_at: proof.timestamped_at.map(|t| t.to_rfc3339()),
+        due_date: due.map(|d| d.to_rfc3339()),
+        margin_seconds: proof.margin_seconds(),
+    }
+}
+
+/// Itens ainda a enviar (pendentes ou com falha). Usado pelo celular e pelos contadores.
 pub fn outbox_items(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
     let items = database.get_pending_outbox_items().map_err(err)?;
     Ok(items
         .into_iter()
-        .map(|item| OutboxItemDto {
-            id: item.id.unwrap_or(0),
-            assign_id: item.assign_id,
-            filename: item.filename,
-            file_hash: item.file_hash,
-            status: item.status.as_str().to_string(),
-            retry_count: item.retry_count,
-            has_rfc3161_token: item.rfc3161_token.is_some(),
-        })
+        .map(|item| outbox_item_dto(database, item))
+        .collect())
+}
+
+/// Fila completa, inclusive itens já entregues (linha do tempo do desktop).
+pub fn outbox_history(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
+    let items = database.get_all_outbox_items().map_err(err)?;
+    Ok(items
+        .into_iter()
+        .map(|item| outbox_item_dto(database, item))
         .collect())
 }
 
@@ -472,5 +499,76 @@ mod tests {
         assert!(!items[1].selected_by_default);
         assert!(!items[1].is_pdf);
         assert!(!items[1].has_local_file);
+    }
+
+    fn seed_course_with_assign(db: &Database, assign_id: i64, due: chrono::DateTime<Utc>) {
+        db.upsert_course(&Course {
+            id: 1,
+            fullname: "C".into(),
+            shortname: "C".into(),
+            summary: None,
+            last_synced_at: None,
+            is_muted: false,
+        })
+        .unwrap();
+        db.upsert_section(&Section {
+            id: 10,
+            course_id: 1,
+            name: "S".into(),
+            summary: None,
+            activities: vec![],
+        })
+        .unwrap();
+        db.upsert_activity(&activity(assign_id, Some(due), false))
+            .unwrap();
+    }
+
+    #[test]
+    fn outbox_history_includes_delivered_with_times_and_margin() {
+        let db = Database::open_in_memory().unwrap();
+        let due = Utc::now() + Duration::days(2);
+        seed_course_with_assign(&db, 77, due);
+
+        let mut pending =
+            crate::models::OutboxItem::new(77, "a.pdf".into(), "h1".into(), "/a".into());
+        pending.last_error = Some("timeout".into());
+        db.insert_outbox_item(&pending).unwrap();
+        let mut delivered =
+            crate::models::OutboxItem::new(99, "b.pdf".into(), "h2".into(), "/b".into());
+        delivered.record_success();
+        db.insert_outbox_item(&delivered).unwrap();
+
+        // fila de envio (celular/contadores) continua só com o que falta enviar
+        let pending_only = outbox_items(&db).unwrap();
+        assert_eq!(pending_only.len(), 1);
+        assert_eq!(pending_only[0].last_error.as_deref(), Some("timeout"));
+
+        let all = outbox_history(&db).unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].status, "pending");
+        assert_eq!(all[1].status, "delivered");
+        assert!(all[1].last_attempt_at.is_some());
+        assert!(!all[0].created_at.is_empty());
+        assert_eq!(all[0].due_date.as_deref(), Some(due.to_rfc3339().as_str()));
+        let margin = all[0].margin_seconds.unwrap();
+        assert!((margin - 2 * 86_400).abs() < 5);
+        assert!(all[1].due_date.is_none() && all[1].margin_seconds.is_none());
+    }
+
+    #[test]
+    fn submission_proof_report_includes_deadline_margin() {
+        let db = Database::open_in_memory().unwrap();
+        seed_course_with_assign(&db, 5, Utc::now() + Duration::days(1));
+        let id = db
+            .insert_outbox_item(&crate::models::OutboxItem::new(
+                5,
+                "x.pdf".into(),
+                "hh".into(),
+                "/x".into(),
+            ))
+            .unwrap();
+        let proof = submission_proof(&db, id).unwrap();
+        assert!(proof.formatted_report.contains("Folga em relação ao prazo"));
+        assert!(proof.formatted_report.contains("antes do prazo"));
     }
 }

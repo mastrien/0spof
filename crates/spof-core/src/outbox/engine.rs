@@ -1,7 +1,7 @@
 use crate::crypto;
 use crate::error::{Result, SpofError};
 use crate::models::{OutboxItem, OutboxStatus};
-use crate::outbox::tsa::TsaClient;
+use crate::outbox::tsa::{parse_timestamp_gen_time, TsaClient};
 use crate::storage::Database;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,28 @@ pub struct SubmissionProof {
     pub status: OutboxStatus,
     pub has_rfc3161_token: bool,
     pub rfc3161_token_bytes_len: usize,
+    /// Horário emitido pela autoridade de carimbo (`genTime`), quando o token existe e é legível.
+    #[serde(default)]
+    pub timestamped_at: Option<DateTime<Utc>>,
+    /// Prazo da tarefa no Moodle, se já sincronizado.
+    #[serde(default)]
+    pub due_date: Option<DateTime<Utc>>,
+}
+
+/// Formata uma duração em segundos como "2 dias e 13 h", "5 h 10 min" ou "42 min".
+pub fn format_margin(total_secs: i64) -> String {
+    let secs = total_secs.abs();
+    let days = secs / 86_400;
+    let hours = (secs % 86_400) / 3_600;
+    let mins = (secs % 3_600) / 60;
+    if days > 0 {
+        let d = if days == 1 { "dia" } else { "dias" };
+        format!("{days} {d} e {hours} h")
+    } else if hours > 0 {
+        format!("{hours} h {mins} min")
+    } else {
+        format!("{mins} min")
+    }
 }
 
 impl SubmissionProof {
@@ -31,7 +53,28 @@ impl SubmissionProof {
             status: item.status.clone(),
             has_rfc3161_token: token_len > 0,
             rfc3161_token_bytes_len: token_len,
+            timestamped_at: item
+                .rfc3161_token
+                .as_deref()
+                .and_then(parse_timestamp_gen_time),
+            due_date: None,
         }
+    }
+
+    pub fn with_due_date(mut self, due_date: Option<DateTime<Utc>>) -> Self {
+        self.due_date = due_date;
+        self
+    }
+
+    /// Momento que prova a existência do arquivo: o carimbo da TSA ou, sem ele, o registro local.
+    pub fn sealed_at(&self) -> DateTime<Utc> {
+        self.timestamped_at.unwrap_or(self.queued_at)
+    }
+
+    /// Folga em segundos entre o selo e o prazo (negativa se foi selado depois do prazo).
+    pub fn margin_seconds(&self) -> Option<i64> {
+        self.due_date
+            .map(|due| (due - self.sealed_at()).num_seconds())
     }
 
     /// Formats the audit report as plain text for academic submission evidence.
@@ -45,6 +88,9 @@ Nome do Arquivo:           {}
 Checksum SHA-256:          {}
 Registro de Conclusão:     {} (UTC)
 Carimbo de Tempo RFC 3161: {} (Tamanho: {} bytes)
+Carimbo emitido em:        {}
+Prazo da Tarefa:           {}
+Folga em relação ao prazo: {}
 Status de Entrega:         {}
 ================================================================================
 Este relatório atesta que o arquivo com o hash acima foi congelado e selado
@@ -60,6 +106,17 @@ antes do encerramento do prazo, independentemente de instabilidades no servidor.
                 "PENDENTE / SEM TOKEN EXTERNO"
             },
             self.rfc3161_token_bytes_len,
+            self.timestamped_at
+                .map(|t| format!("{} (UTC)", t.to_rfc3339()))
+                .unwrap_or_else(|| "não disponível".to_string()),
+            self.due_date
+                .map(|d| format!("{} (UTC)", d.to_rfc3339()))
+                .unwrap_or_else(|| "não sincronizado".to_string()),
+            match self.margin_seconds() {
+                Some(m) if m >= 0 => format!("{} antes do prazo", format_margin(m)),
+                Some(m) => format!("{} DEPOIS do prazo", format_margin(m)),
+                None => "indeterminada".to_string(),
+            },
             self.status.as_str()
         )
     }
@@ -153,7 +210,11 @@ impl OutboxEngine {
             .get_outbox_item(outbox_item_id)?
             .ok_or_else(|| SpofError::Outbox(format!("Item {} not found", outbox_item_id)))?;
 
-        Ok(SubmissionProof::from_outbox_item(&item))
+        let due_date = self
+            .db
+            .get_activity(item.assign_id)?
+            .and_then(|activity| activity.due_date);
+        Ok(SubmissionProof::from_outbox_item(&item).with_due_date(due_date))
     }
 
     /// Fetches all items that are ready to be dispatched or retried.
@@ -187,6 +248,60 @@ mod tests {
             .enqueue_file(99, Path::new("arquivo_inexistente.pdf"), false)
             .await;
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_format_margin() {
+        assert_eq!(format_margin(2 * 86_400 + 13 * 3_600), "2 dias e 13 h");
+        assert_eq!(format_margin(86_400), "1 dia e 0 h");
+        assert_eq!(format_margin(5 * 3_600 + 600), "5 h 10 min");
+        assert_eq!(format_margin(-(42 * 60)), "42 min");
+    }
+
+    fn item_with_token(token: Option<Vec<u8>>) -> OutboxItem {
+        let mut item = OutboxItem::new(7, "a.pdf".into(), "ab".repeat(32), "/tmp/a.pdf".into());
+        item.rfc3161_token = token;
+        item
+    }
+
+    #[test]
+    fn test_proof_margin_uses_tsa_time_then_falls_back_to_queue_time() {
+        let mut token = vec![0x18, 0x0f];
+        token.extend_from_slice(b"20261128100000Z");
+        let item = item_with_token(Some(token));
+        let due: DateTime<Utc> = "2026-11-30T23:59:00Z".parse().unwrap();
+        let proof = SubmissionProof::from_outbox_item(&item).with_due_date(Some(due));
+        assert_eq!(
+            proof.timestamped_at.unwrap().to_rfc3339(),
+            "2026-11-28T10:00:00+00:00"
+        );
+        assert_eq!(
+            proof.margin_seconds(),
+            Some(2 * 86_400 + 13 * 3_600 + 59 * 60)
+        );
+        let report = proof.formatted_report();
+        assert!(report.contains("2 dias e 13 h antes do prazo"));
+        assert!(report.contains("2026-11-28T10:00:00+00:00 (UTC)"));
+
+        // sem token: usa created_at
+        let no_token = item_with_token(None);
+        let due2 = no_token.created_at + chrono::Duration::hours(3);
+        let p2 = SubmissionProof::from_outbox_item(&no_token).with_due_date(Some(due2));
+        assert!(p2.timestamped_at.is_none());
+        assert_eq!(p2.margin_seconds(), Some(3 * 3_600));
+    }
+
+    #[test]
+    fn test_proof_reports_late_and_unknown_deadline() {
+        let item = item_with_token(None);
+        let late = SubmissionProof::from_outbox_item(&item)
+            .with_due_date(Some(item.created_at - chrono::Duration::hours(2)));
+        assert!(late
+            .formatted_report()
+            .contains("2 h 0 min DEPOIS do prazo"));
+        let unknown = SubmissionProof::from_outbox_item(&item);
+        assert_eq!(unknown.margin_seconds(), None);
+        assert!(unknown.formatted_report().contains("indeterminada"));
     }
 
     #[tokio::test]

@@ -59,6 +59,24 @@ pub struct OutboxItemDto {
     pub status: String,
     pub retry_count: u32,
     pub has_rfc3161_token: bool,
+    /// Momento do registro local do item.
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
+    #[serde(default)]
+    pub last_attempt_at: Option<String>,
+    #[serde(default)]
+    pub last_error: Option<String>,
+    /// Horário emitido pela TSA (`genTime`), quando o token é legível.
+    #[serde(default)]
+    pub timestamped_at: Option<String>,
+    /// Prazo da tarefa no Moodle (RFC 3339), se sincronizado.
+    #[serde(default)]
+    pub due_date: Option<String>,
+    /// Folga em segundos entre o selo e o prazo (negativa = selado após o prazo).
+    #[serde(default)]
+    pub margin_seconds: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

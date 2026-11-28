@@ -85,6 +85,53 @@ impl Database {
         }
     }
 
+    /// Todos os itens da fila (inclusive entregues), do mais antigo ao mais recente.
+    pub fn get_all_outbox_items(&self) -> Result<Vec<OutboxItem>> {
+        let connection = self.conn.lock().unwrap();
+        let mut statement = connection.prepare(
+            r#"
+            SELECT id, assign_id, filename, file_hash, local_file_path, status,
+                   retry_count, last_attempt_at, last_error, rfc3161_token, created_at, updated_at
+            FROM outbox_items
+            ORDER BY created_at ASC, id ASC
+            "#,
+        )?;
+        let rows = statement.query_map([], |row| {
+            let status_str: String = row.get(5)?;
+            let last_attempt_str: Option<String> = row.get(7)?;
+            let created_str: String = row.get(10)?;
+            let updated_str: String = row.get(11)?;
+            let parse = |s: &str| {
+                DateTime::parse_from_rfc3339(s)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now())
+            };
+            Ok(OutboxItem {
+                id: Some(row.get(0)?),
+                assign_id: row.get(1)?,
+                filename: row.get(2)?,
+                file_hash: row.get(3)?,
+                local_file_path: row.get(4)?,
+                status: status_str.parse().unwrap_or(OutboxStatus::Pending),
+                retry_count: row.get(6)?,
+                last_attempt_at: last_attempt_str.and_then(|s| {
+                    DateTime::parse_from_rfc3339(&s)
+                        .ok()
+                        .map(|dt| dt.with_timezone(&Utc))
+                }),
+                last_error: row.get(8)?,
+                rfc3161_token: row.get(9)?,
+                created_at: parse(&created_str),
+                updated_at: parse(&updated_str),
+            })
+        })?;
+        let mut items = Vec::new();
+        for item in rows {
+            items.push(item?);
+        }
+        Ok(items)
+    }
+
     pub fn get_pending_outbox_items(&self) -> Result<Vec<OutboxItem>> {
         let connection = self.conn.lock().unwrap();
         let mut statement = connection.prepare(

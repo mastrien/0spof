@@ -55,7 +55,7 @@ pub fn handle_get_course_details(
 }
 
 pub fn handle_get_outbox_items(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
-    api::outbox_items(database)
+    api::outbox_history(database)
 }
 
 pub async fn handle_enqueue_submission(
