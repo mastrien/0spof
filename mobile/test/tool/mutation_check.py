@@ -20,10 +20,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 env = dict(os.environ, CI='true')
 # Mutantes sem efeito observável (equivalentes): não contam como buraco.
 EQUIVALENT = {
-    'M16',  # `!o.hasToken` redundante: failed já é tratado antes
     'M40',  # minHeight 64 da linha de prazo: o bloco de data (44) + padding (2x10) já dá 64
     'N3',   # `late` só é lido depois de `d.submitted` na cadeia de chips
-    'N22',  # sem shrinkWrap o botão tem 48 dp de área de toque (visual 44): continua >= 44
 }
 
 S = 'lib/screens.dart'
@@ -82,7 +80,7 @@ muts=[
 ('M43 SpofCard volta a Container',W,"child: Material(\n        color: color ?? p.surface,\n        clipBehavior: Clip.antiAlias,","child: Material(\n        color: Colors.transparent,\n        clipBehavior: Clip.antiAlias,"),
 ('M44 StatusChip height fixo',W,"constraints: const BoxConstraints(minHeight: 24),\n      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),\n      decoration: BoxDecoration(color: p.bgOf(tone)","height: 24,\n      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),\n      decoration: BoxDecoration(color: p.bgOf(tone)"),
 ('M45 InfoBanner minHeight 44->20',W,"const BoxConstraints(minHeight: 44),\n        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)","const BoxConstraints(minHeight: 20),\n        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)"),
-('M46 HeaderIconButton 44->32',W,"fixedSize: const Size(44, 44),\n        tapTargetSize: MaterialTapTargetSize.shrinkWrap,\n        side: BorderSide(color: p.fieldBorder),\n        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),\n      ),\n    );\n  }\n}\n\n/// Pílula de status","fixedSize: const Size(32, 32),\n        tapTargetSize: MaterialTapTargetSize.shrinkWrap,\n        side: BorderSide(color: p.fieldBorder),\n        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),\n      ),\n    );\n  }\n}\n\n/// Pílula de status"),
+('M46 HeaderIconButton 44->32',W,"fixedSize: const Size(44, 44),\n        side: BorderSide(color: p.fieldBorder),\n        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),\n      ),\n    );\n  }\n}\n\n/// Pílula de status","fixedSize: const Size(32, 32),\n        side: BorderSide(color: p.fieldBorder),\n        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),\n      ),\n    );\n  }\n}\n\n/// Pílula de status"),
 ('M47 ListRow minHeight 56->30',W,"this.minHeight = 56","this.minHeight = 30"),
 ('M48 enqueueFile ignora fetchTsa',A,"fetchTsa: fetchTsa);","fetchTsa: true);"),
 ('M49 sheet ignora stamp',N,"fetchTsa: _stamp","fetchTsa: true"),
@@ -114,7 +112,32 @@ muts += [
     ('N19 banner usa relogio proprio', S, "      pcLastSync: store.pcLastSync,\n      now: now,", "      pcLastSync: store.pcLastSync,"),
     ('N20 hero CTA enfileirar -> abrir', S, "label = 'Enfileirar entrega';", "label = 'Abrir';"),
     ('N21 chip Sem arquivo some', S, "? const StatusChip('Sem arquivo', tone: Tone.warn)", "? null"),
-    ('N22 tapTarget do botao do cabecalho volta', W, "tapTargetSize: MaterialTapTargetSize.shrinkWrap,", ""),
+    ('N22 botao do cabecalho perde a area de toque de 48 dp', W, "fixedSize: const Size(44, 44),", "fixedSize: const Size(44, 44),\n        tapTargetSize: MaterialTapTargetSize.shrinkWrap,"),
+    # --- ciclo 5: persistência da última sync, timer do HomeShell, bordas ---
+    ('Q37 chave do storage', 'lib/store.dart', "static const _kLastSync = 'pc_last_sync_ms';", "static const _kLastSync = 'pc_last_sync';"),
+    ('Q38 saveLastSync desligado', 'lib/store.dart', "await _secure.write(key: _kLastSync, value: '${t.millisecondsSinceEpoch}');", "await Future<void>.value();"),
+    ('Q39 restoreLastSync desligado', 'lib/store.dart', "if (ms != null) pcLastSync =", "if (ms != null && false) pcLastSync ="),
+    ('Q40 segundos em vez de ms', 'lib/store.dart', "value: '${t.millisecondsSinceEpoch}'", "value: '${t.millisecondsSinceEpoch ~/ 1000}'"),
+    ('Q41 tryParse -> parse', 'lib/store.dart', "int.tryParse(await _secure.read(key: _kLastSync) ?? '')", "int.parse(await _secure.read(key: _kLastSync) ?? '0')"),
+    ('Q42 unpair nao zera memoria', 'lib/store.dart', "    pcLastSync = null;\n    await clearLastSync();", "    await clearLastSync();"),
+    ('Q43 unpair nao apaga storage', 'lib/store.dart', "    pcLastSync = null;\n    await clearLastSync();", "    pcLastSync = null;"),
+    ('Q44 pair nao grava', 'lib/store.dart', "    await saveLastSync(pcLastSync!);\n", ""),
+    ('Q45 syncPc nao grava', 'lib/store.dart', "unawaited(saveLastSync(pcLastSync!));", ""),
+    ('Q21 timer sem setState', S, "if (mounted) setState(() {});", "if (mounted) {}"),
+    ('Q22 timer de 1 hora', S, "Timer.periodic(const Duration(minutes: 1), (_) {\n      if (mounted)", "Timer.periodic(const Duration(hours: 1), (_) {\n      if (mounted)"),
+    ('Q23 dispose nao cancela timer', S, "_tick?.cancel();", ""),
+    ('Q06 contagem sem zero nos minutos', F, "return '${diff.inHours}h ${_two(mins)}min';", "return '${diff.inHours}h ${mins}min';"),
+    ('Q08 exatamente 1 dia', F, "if (days > 0) return", "if (days > 1) return"),
+    ('Q12 menos de 1 minuto vira venceu', F, "if (diff.isNegative) return 'venceu';", "if (diff.inMinutes < 1) return 'venceu';"),
+    ('Q29 chip Sem selo mut', O, "chipText = 'Sem selo';\n      tone = Tone.warn;", "chipText = 'Sem selo';\n      tone = Tone.mut;"),
+    ('Q30 destaque inclui failed', O, "final highlight = !delivered && !failed && o.hasToken;", "final highlight = !delivered && o.hasToken;"),
+    ('Q31 tentativas sempre', O, "if (o.retries > 0)", "if (o.retries >= 0)"),
+    ('Q31b tentativas so > 1', O, "if (o.retries > 0)", "if (o.retries > 1)"),
+    ('Q32 rotulo semantico sem prefixo', O, "label: 'Etapa atual: $stepLabel',", "label: stepLabel,"),
+    ('Q33 aviso sem hasPending', O, "if (hasPending && !store.session.authenticated)", "if (!store.session.authenticated)"),
+    ('Q34 texto da sync no Ajustes', 'lib/settings_page.dart', "'Sincroniza na rede de casa · último sync", "'Sincroniza · último sync"),
+    ('Q35 texto de falha ao enfileirar', A, "'Falha ao enfileirar: $e'", "'Falha: $e'"),
+    ('Q36 falha nao esconde o toast anterior', A, "      ScaffoldMessenger.of(context).hideCurrentSnackBar();\n      _toast(context, 'Falha ao enfileirar", "      _toast(context, 'Falha ao enfileirar"),
 ]
 
 only = sys.argv[1:]
