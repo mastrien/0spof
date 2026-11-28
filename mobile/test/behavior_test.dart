@@ -60,7 +60,7 @@ void main() {
       await tester.tap(find.text('Escolher arquivo'));
       await tester.pumpAndSettle();
       expect(find.text('trabalho.pdf'), findsOneWidget);
-      await tester.tap(find.text('Enfileirar com selo criptográfico'));
+      await tester.tap(find.text('Registrar entrega'));
       await tester.pumpAndSettle();
       expect(store.calls.single.fetchTsa, isTrue);
       expect(store.calls.single.assignId, 4);
@@ -74,7 +74,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Gerar carimbo de tempo'));
       await tester.pump();
-      await tester.tap(find.text('Enfileirar sem carimbo'));
+      await tester.tap(find.text('Registrar sem carimbo'));
       await tester.pumpAndSettle();
       expect(store.calls.single.fetchTsa, isFalse);
     });

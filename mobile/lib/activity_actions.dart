@@ -124,7 +124,7 @@ Future<void> enqueueFile(BuildContext context, Store store, int assignId, String
       r.hasTsaToken
           ? 'Entrega #${r.outboxId} na fila, com carimbo RFC 3161.'
           : fetchTsa
-              ? 'Entrega #${r.outboxId} na fila. Sem carimbo (TSA fora do ar); o hash local vale como prova.'
+              ? 'Entrega #${r.outboxId} na fila. Sem carimbo (TSA fora do ar): só o hash local foi registrado, sem prova de data.'
               : 'Entrega #${r.outboxId} na fila, sem carimbo de tempo.',
     );
   } catch (e) {
