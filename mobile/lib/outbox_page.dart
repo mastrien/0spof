@@ -22,8 +22,9 @@ List<StageState> outboxSteps(String status, bool hasToken) {
     'delivered' => [d, d, d, d],
     'failed' => [d, selo, e, n],
     'in_flight' => [d, selo, a, n],
-    // pendente: com selo, a próxima etapa é o envio (ainda não iniciado); sem selo, o selo é a etapa atual
-    _ => hasToken ? [d, d, n, n] : [d, a, n, n],
+    // pendente: o selo é pedido só ao enfileirar; se não veio (TSA fora do ar ou carimbo desligado),
+    // nada o refaz automaticamente, então "Sem selo" é um estado final neutro, não "em andamento".
+    _ => hasToken ? [d, d, n, n] : [d, n, n, n],
   };
 }
 
@@ -34,6 +35,7 @@ String outboxStepLabel(List<StageState> s) {
   if (err >= 0) return 'Falha em ${outboxStepNames[err]}';
   final act = s.indexOf(StageState.active);
   if (act >= 0) return outboxStepNames[act];
+  if (s[1] == StageState.pending) return 'Sem selo';
   return 'Aguardando envio';
 }
 

@@ -246,8 +246,9 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
         child: Row(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              // cresce com fonte grande em vez de vazar
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
               alignment: Alignment.center,
               decoration: BoxDecoration(color: p.bgOf(kind.tone), borderRadius: BorderRadius.circular(9)),
               child: Text(kind.label,

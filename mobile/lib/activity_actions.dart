@@ -97,10 +97,17 @@ Future<void> _download(BuildContext context, Store store, int id) async {
   }
 }
 
-/// Escolhe um arquivo e o enfileira para a tarefa `assignId`.
-Future<void> pickAndEnqueue(BuildContext context, Store store, int assignId) async {
+/// Seletor de arquivo (injetável em testes): devolve o caminho escolhido ou nulo.
+typedef FilePathPicker = Future<String?> Function();
+
+Future<String?> pickFilePath() async {
   final picked = await FilePicker.pickFiles();
-  final path = picked.isEmpty ? null : picked.first.path;
+  return picked.isEmpty ? null : picked.first.path;
+}
+
+/// Escolhe um arquivo e o enfileira para a tarefa `assignId` (com carimbo RFC 3161 por padrão).
+Future<void> pickAndEnqueue(BuildContext context, Store store, int assignId, {FilePathPicker pick = pickFilePath}) async {
+  final path = await pick();
   if (path == null || !context.mounted) return;
   await enqueueFile(context, store, assignId, path);
 }

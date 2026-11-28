@@ -100,7 +100,7 @@ void main() {
       expect(outboxSteps('in_flight', true), [d, d, a, n]);
       expect(outboxSteps('in_flight', false), [d, n, a, n]);
       expect(outboxSteps('pending', true), [d, d, n, n]);
-      expect(outboxSteps('pending', false), [d, a, n, n]);
+      expect(outboxSteps('pending', false), [d, n, n, n]);
       expect(outboxSteps('failed', true), [d, d, e, n]);
       expect(outboxSteps('failed', false), [d, n, e, n]);
     });
@@ -108,7 +108,8 @@ void main() {
     test('rótulos', () {
       expect(outboxStepLabel(outboxSteps('delivered', true)), 'Confirmado');
       expect(outboxStepLabel(outboxSteps('in_flight', true)), 'Enviando');
-      expect(outboxStepLabel(outboxSteps('pending', false)), 'Selo');
+      expect(outboxStepLabel(outboxSteps('pending', false)), 'Sem selo');
+      expect(outboxStepLabel(outboxSteps('in_flight', false)), 'Enviando');
       expect(outboxStepLabel(outboxSteps('pending', true)), 'Aguardando envio');
       expect(outboxStepLabel(outboxSteps('failed', false)), 'Falha em Enviando');
     });

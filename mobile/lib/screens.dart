@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'activity_actions.dart';
@@ -70,6 +72,22 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _tab = 0;
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    // Reconstrói a cada minuto para os textos relativos ("sync há 12 min", contagem regressiva) não ficarem velhos.
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -225,7 +243,9 @@ const staleSyncAfter = Duration(hours: 24);
 
 class DeadlinesPage extends StatelessWidget {
   final Store store;
-  const DeadlinesPage({super.key, required this.store});
+  /// `fixedNow` só existe para testes (relógio injetado); em produção vale `DateTime.now()`.
+  final DateTime? fixedNow;
+  const DeadlinesPage({super.key, required this.store, this.fixedNow});
 
   Deadline? _next(List<Deadline> items, DateTime now) {
     Deadline? any;
@@ -239,7 +259,7 @@ class DeadlinesPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
+    final now = fixedNow ?? DateTime.now();
     final items = [...store.deadlines]..sort((a, b) {
         if (a.due == null && b.due == null) return 0;
         if (a.due == null) return 1;
@@ -264,17 +284,17 @@ class DeadlinesPage extends StatelessWidget {
                 },
         ),
       ),
-      _StatusBanner(store: store),
+      _StatusBanner(store: store, now: now),
     ];
 
     if (items.isEmpty) {
       children.add(emptyState(Icons.event_available, 'Nenhum prazo pela frente.\nSincronize para trazer as atividades.'));
     } else {
-      if (next != null) children.add(_NextCard(store: store, d: next));
+      if (next != null) children.add(_NextCard(store: store, d: next, now: now));
       void group(String label, List<Deadline> list) {
         if (list.isEmpty) return;
         children.add(GroupLabel(label, padding: const EdgeInsets.fromLTRB(20, 16, 20, 8)));
-        children.add(dividedCard(context, [for (final d in list) _DeadlineRow(store: store, d: d)]));
+        children.add(dividedCard(context, [for (final d in list) _DeadlineRow(store: store, d: d, now: now)]));
       }
 
       group('Atrasadas', g.late);
@@ -289,7 +309,8 @@ class DeadlinesPage extends StatelessWidget {
 
 class _StatusBanner extends StatelessWidget {
   final Store store;
-  const _StatusBanner({required this.store});
+  final DateTime now;
+  const _StatusBanner({required this.store, required this.now});
 
   @override
   Widget build(BuildContext context) {
@@ -298,6 +319,7 @@ class _StatusBanner extends StatelessWidget {
       outbox: store.outbox,
       pcSyncError: store.pcSyncError,
       pcLastSync: store.pcLastSync,
+      now: now,
     );
     return InfoBanner(
       tone: b.tone,
@@ -329,7 +351,8 @@ class _HeroChip extends StatelessWidget {
 class _NextCard extends StatelessWidget {
   final Store store;
   final Deadline d;
-  const _NextCard({required this.store, required this.d});
+  final DateTime now;
+  const _NextCard({required this.store, required this.d, required this.now});
 
   @override
   Widget build(BuildContext context) {
@@ -369,7 +392,7 @@ class _NextCard extends StatelessWidget {
               style: TextStyle(fontSize: 13, color: p.heroMuted),
               children: [
                 TextSpan(text: 'Vence ${fmtDueLong(due)} · faltam '),
-                TextSpan(text: fmtCountdown(due), style: TextStyle(fontWeight: FontWeight.w700, color: p.onHero)),
+                TextSpan(text: fmtCountdown(due, now: now), style: TextStyle(fontWeight: FontWeight.w700, color: p.onHero)),
               ],
             ),
           ),
@@ -407,13 +430,14 @@ class _NextCard extends StatelessWidget {
 class _DeadlineRow extends StatelessWidget {
   final Store store;
   final Deadline d;
-  const _DeadlineRow({required this.store, required this.d});
+  final DateTime now;
+  const _DeadlineRow({required this.store, required this.d, required this.now});
 
   @override
   Widget build(BuildContext context) {
     final p = Pal.of(context);
     final due = d.due;
-    final late = due != null && due.isBefore(DateTime.now()) && !d.submitted;
+    final late = due != null && due.isBefore(now) && !d.submitted;
     final queued = d.type == 'assign' ? queuedFor(store, d.id) : null;
     final Widget? chip = d.submitted
         ? const StatusChip('Enviado', tone: Tone.ok)

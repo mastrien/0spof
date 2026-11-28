@@ -1,4 +1,3 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'activity_actions.dart';
@@ -7,7 +6,7 @@ import 'store.dart';
 import 'theme.dart';
 
 /// Folha inferior "Nova entrega": disciplina, tarefa (entre as com prazo), arquivo e carimbo.
-Future<void> showNewDeliverySheet(BuildContext context, Store store) async {
+Future<void> showNewDeliverySheet(BuildContext context, Store store, {FilePathPicker pick = pickFilePath}) async {
   final assigns = store.deadlines.where((d) => d.type == 'assign').toList();
   if (assigns.isEmpty) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -19,14 +18,15 @@ Future<void> showNewDeliverySheet(BuildContext context, Store store) async {
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => _NewDeliverySheet(store: store, assigns: assigns),
+    builder: (_) => _NewDeliverySheet(store: store, assigns: assigns, pick: pick),
   );
 }
 
 class _NewDeliverySheet extends StatefulWidget {
   final Store store;
   final List<Deadline> assigns;
-  const _NewDeliverySheet({required this.store, required this.assigns});
+  final FilePathPicker pick;
+  const _NewDeliverySheet({required this.store, required this.assigns, required this.pick});
   @override
   State<_NewDeliverySheet> createState() => _NewDeliverySheetState();
 }
@@ -82,8 +82,7 @@ class _NewDeliverySheetState extends State<_NewDeliverySheet> {
   }
 
   Future<void> _pick() async {
-    final picked = await FilePicker.pickFiles();
-    final path = picked.isEmpty ? null : picked.first.path;
+    final path = await widget.pick();
     if (path == null || !mounted) return;
     setState(() => _path = path);
   }

@@ -45,6 +45,7 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
   static const defaultMoodleUrl = 'https://moodle2.jcr.ifsp.edu.br';
   static const _kBaseUrl = 'moodle_base_url';
   static const _kCookie = 'moodle_session';
+  static const _kLastSync = 'pc_last_sync_ms';
 
   Future<void> init() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -56,6 +57,7 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
       deviceName = '${a.manufacturer} ${a.model}'.trim();
     } catch (_) {}
     await _restoreSession();
+    await _restoreLastSync();
     await refresh();
     WidgetsBinding.instance.addObserver(this);
     _timer = Timer.periodic(const Duration(minutes: 1), (_) => syncPc(silent: true));
@@ -120,6 +122,21 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// A hora da última sincronização com o PC sobrevive a reinícios (senão a faixa de
+  /// Prazos diria "Ainda sem sincronização" a cada abertura do app).
+  Future<void> _restoreLastSync() async {
+    try {
+      final ms = int.tryParse(await _secure.read(key: _kLastSync) ?? '');
+      if (ms != null) pcLastSync = DateTime.fromMillisecondsSinceEpoch(ms);
+    } catch (_) {}
+  }
+
+  Future<void> _saveLastSync(DateTime t) async {
+    try {
+      await _secure.write(key: _kLastSync, value: '${t.millisecondsSinceEpoch}');
+    } catch (_) {}
+  }
+
   Future<String> savedMoodleUrl() async =>
       (await _secure.read(key: _kBaseUrl)) ?? session.baseUrl ?? defaultMoodleUrl;
 
@@ -172,6 +189,7 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
     try {
       await rust.syncPeer(device: deviceName);
       pcLastSync = DateTime.now();
+      unawaited(_saveLastSync(pcLastSync!));
       pcSyncError = null;
     } catch (e) {
       if (!silent) pcSyncError = '$e';
