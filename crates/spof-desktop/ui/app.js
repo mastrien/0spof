@@ -520,7 +520,7 @@ function renderDeadlines() {
   if (rows.length === 0) {
     container.innerHTML = `<p class="muted-line">${
       state.deadlineView === "sent"
-        ? "Nenhuma entrega enviada ainda."
+        ? "Nenhuma entrega marcada como enviada."
         : "Nenhum prazo pendente no momento. Você está em dia!"
     }</p>`;
     return;
@@ -1422,7 +1422,7 @@ function renderOutbox() {
       chip.innerText = "Sessão do Moodle ativa";
     } else {
       chip.className = "chip warn";
-      chip.innerText = "Sessão desconectada · conecte-se para enviar";
+      chip.innerText = "Sessão desconectada · conecte-se para atualizar prazos";
     }
   }
 
@@ -1481,12 +1481,12 @@ function renderOutbox() {
     detail.innerHTML = `
       <div class="receipt-head">
         <div>
-          <p class="eyebrow">Comprovante</p>
+          <p class="eyebrow">Registro local</p>
           <h2>${escapeHtml(sel.filename)}</h2>
         </div>
         <div class="receipt-actions">
-          <button class="btn btn-secondary btn-proof" data-id="${sel.id}" type="button">Ver dossiê</button>
-          <button class="btn btn-secondary btn-export-proof" data-id="${sel.id}" type="button">Exportar comprovante</button>
+          <button class="btn btn-secondary btn-proof" data-id="${sel.id}" type="button">Ver registro</button>
+          <button class="btn btn-secondary btn-export-proof" data-id="${sel.id}" type="button">Exportar registro</button>
         </div>
       </div>
       <div class="receipt-body">
@@ -1764,7 +1764,7 @@ const proofText = document.getElementById("proof-text");
 const btnCloseModal = document.getElementById("btn-close-modal");
 const btnCopyProof = document.getElementById("btn-copy-proof");
 
-// Salva o comprovante como arquivo de texto (o mesmo relatório do dossiê).
+// Salva o registro local como arquivo de texto (o mesmo relatório mostrado na janela).
 function downloadTextFile(filename, text) {
   const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -1781,9 +1781,9 @@ async function exportProof(outboxId) {
   try {
     const proof = await invoke("get_submission_proof", { outboxId });
     const base = String(proof.filename).replace(/\.[^.]*$/, "").replace(/[^\w.-]+/g, "_");
-    downloadTextFile(`comprovante-0spof-${base}-${proof.assign_id}.txt`, proof.formatted_report);
+    downloadTextFile(`registro-0spof-${base}-${proof.assign_id}.txt`, proof.formatted_report);
   } catch (err) {
-    alert("Erro ao exportar comprovante: " + err);
+    alert("Erro ao exportar registro: " + err);
   }
 }
 
@@ -1796,7 +1796,7 @@ async function openProof(outboxId) {
     currentProofId = parseInt(outboxId, 10);
     proofModal.classList.remove("hidden");
   } catch (err) {
-    alert("Erro ao obter comprovante: " + err);
+    alert("Erro ao obter registro: " + err);
   }
 }
 
@@ -1806,7 +1806,7 @@ document.getElementById("btn-save-proof")?.addEventListener("click", () => {
 });
 btnCopyProof.addEventListener("click", () => {
   navigator.clipboard.writeText(proofText.innerText);
-  alert("Comprovante copiado para a área de transferência!");
+  alert("Registro copiado para a área de transferência!");
 });
 
 // Login Automático Nativo via Webview
