@@ -45,6 +45,7 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
   static const defaultMoodleUrl = 'https://moodle2.jcr.ifsp.edu.br';
   static const _kBaseUrl = 'moodle_base_url';
   static const _kCookie = 'moodle_session';
+  static const _kLastSync = 'pc_last_sync_ms';
 
   Future<void> init() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -56,6 +57,7 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
       deviceName = '${a.manufacturer} ${a.model}'.trim();
     } catch (_) {}
     await _restoreSession();
+    await restoreLastSync();
     await refresh();
     WidgetsBinding.instance.addObserver(this);
     _timer = Timer.periodic(const Duration(minutes: 1), (_) => syncPc(silent: true));
@@ -120,6 +122,43 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// A hora da última sincronização com o PC sobrevive a reinícios (senão a faixa de
+  /// Prazos diria "Ainda sem sincronização" a cada abertura do app).
+  @visibleForTesting
+  Future<void> restoreLastSync() async {
+    try {
+      final ms = int.tryParse(await _secure.read(key: _kLastSync) ?? '');
+      if (ms != null) pcLastSync = DateTime.fromMillisecondsSinceEpoch(ms);
+    } catch (_) {}
+  }
+
+  @visibleForTesting
+  Future<void> saveLastSync(DateTime t) async {
+    try {
+      await _secure.write(key: _kLastSync, value: '${t.millisecondsSinceEpoch}');
+    } catch (_) {}
+  }
+
+  @visibleForTesting
+  Future<void> clearLastSync() async {
+    try {
+      await _secure.delete(key: _kLastSync);
+    } catch (_) {}
+  }
+
+  /// Chamadas ao Rust isoladas para os testes poderem substituí-las.
+  @visibleForTesting
+  Future<void> rustPair(String code) => rust.pair(code: code, device: deviceName);
+
+  @visibleForTesting
+  Future<void> rustUnpair() => rust.unpair();
+
+  @visibleForTesting
+  Future<String> rustPeerInfo() => rust.peerInfo();
+
+  @visibleForTesting
+  Future<void> rustSyncPeer() => rust.syncPeer(device: deviceName);
+
   Future<String> savedMoodleUrl() async =>
       (await _secure.read(key: _kBaseUrl)) ?? session.baseUrl ?? defaultMoodleUrl;
 
@@ -141,20 +180,23 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _loadPeer() async {
-    final j = jsonDecode(await rust.peerInfo());
+    final j = jsonDecode(await rustPeerInfo());
     peer = j == null ? null : Peer(j['name'] ?? '', j['host'], j['port']);
   }
 
   /// Pareia com o PC (conteúdo do QR code) e já sincroniza. Lança em caso de erro.
   Future<void> pairWithPc(String code) async {
-    await rust.pair(code: code, device: deviceName);
+    await rustPair(code);
     pcLastSync = DateTime.now();
+    await saveLastSync(pcLastSync!);
     pcSyncError = null;
     await refresh();
   }
 
   Future<void> unpairPc() async {
-    await rust.unpair();
+    await rustUnpair();
+    pcLastSync = null;
+    await clearLastSync();
     pcSyncError = null;
     await refresh();
   }
@@ -170,8 +212,9 @@ class Store extends ChangeNotifier with WidgetsBindingObserver {
     pcSyncing = true;
     notifyListeners();
     try {
-      await rust.syncPeer(device: deviceName);
+      await rustSyncPeer();
       pcLastSync = DateTime.now();
+      unawaited(saveLastSync(pcLastSync!));
       pcSyncError = null;
     } catch (e) {
       if (!silent) pcSyncError = '$e';
