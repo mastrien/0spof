@@ -1,9 +1,11 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
 import 'models.dart';
 import 'store.dart';
 import 'theme.dart';
+import 'widgets.dart';
 
 enum ExportPreset { materials, pdfs, all, none }
 
@@ -178,7 +180,20 @@ class _CourseExportPageState extends State<CourseExportPage> {
     final preview = _preview;
     return Scaffold(
       appBar: AppBar(
-        title: Text('Exportar · ${widget.course.shortname}', overflow: TextOverflow.ellipsis),
+        toolbarHeight: 64,
+        titleSpacing: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Eyebrow('Compartilhar disciplina'),
+            Text(
+              'Exportar · ${widget.course.shortname}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
       ),
       body: _loadError != null
           ? Center(
@@ -194,6 +209,7 @@ class _CourseExportPageState extends State<CourseExportPage> {
   }
 
   Widget _buildContent(BuildContext context, CourseExportPreview preview) {
+    final p = Pal.of(context);
     final allItems = [for (final s in preview.sections) ...s.items];
     final nonMaterials = allItems.where((i) => !i.isMaterial).toList();
     final selectedNonMaterials = nonMaterials.where((i) => _selected.contains(i.id)).length;
@@ -208,161 +224,144 @@ class _CourseExportPageState extends State<CourseExportPage> {
         )
     ].where((entry) => entry.items.isNotEmpty).toList();
 
+    bool isPreset(ExportPreset preset) => setEquals(_selected, applyExportPreset(preview, preset));
+
+    final detail = [
+      if (stats.pdfCount > 0) '${stats.pdfCount} PDF${stats.pdfCount > 1 ? 's' : ''}',
+      if (stats.totalBytes > 0) formatFileSize(stats.totalBytes),
+    ].join(' · ');
+
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: 16),
             children: [
-              Text(
-                preview.fullname,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                decoration: InputDecoration(
-                  hintText: 'Filtrar por título, PDF ou tipo…',
-                  prefixIcon: const Icon(Icons.search),
-                  isDense: true,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                onChanged: (v) => setState(() => _query = v),
-              ),
-              const SizedBox(height: 8),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ActionChip(
-                      label: const Text('Materiais'),
-                      onPressed: () =>
-                          setState(() => _selected = applyExportPreset(preview, ExportPreset.materials)),
+                    Text(
+                      preview.fullname,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, height: 1.3),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(width: 6),
-                    ActionChip(
-                      label: const Text('Só PDFs'),
-                      onPressed: () =>
-                          setState(() => _selected = applyExportPreset(preview, ExportPreset.pdfs)),
-                    ),
-                    const SizedBox(width: 6),
-                    FilterChip(
-                      label: const Text('Incluir atividades'),
-                      selected: activitiesOn,
-                      onSelected: nonMaterials.isEmpty
-                          ? null
-                          : (on) => setState(() {
-                                if (on) {
-                                  _selected.addAll(nonMaterials.map((i) => i.id));
-                                } else {
-                                  _selected.removeAll(nonMaterials.map((i) => i.id));
-                                }
-                              }),
-                    ),
-                    const SizedBox(width: 6),
-                    ActionChip(
-                      label: const Text('Tudo'),
-                      onPressed: () =>
-                          setState(() => _selected = applyExportPreset(preview, ExportPreset.all)),
-                    ),
-                    const SizedBox(width: 6),
-                    ActionChip(
-                      label: const Text('Limpar'),
-                      onPressed: () =>
-                          setState(() => _selected = applyExportPreset(preview, ExportPreset.none)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      textInputAction: TextInputAction.search,
+                      decoration: const InputDecoration(
+                        hintText: 'Filtrar por título, PDF ou tipo…',
+                        prefixIcon: Icon(Icons.search, size: 20),
+                        constraints: BoxConstraints(minHeight: 48),
+                      ),
+                      onChanged: (v) => setState(() => _query = v),
                     ),
                   ],
                 ),
               ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: const Text('Anexar arquivos baixados (PDFs e cópias offline)'),
-                value: _includeFiles,
-                onChanged: (v) => setState(() => _includeFiles = v),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                child: Row(
+                  children: [
+                    FilterPill(
+                      label: 'Materiais',
+                      selected: isPreset(ExportPreset.materials),
+                      onTap: () => setState(() => _selected = applyExportPreset(preview, ExportPreset.materials)),
+                    ),
+                    const SizedBox(width: 8),
+                    FilterPill(
+                      label: 'Só PDFs',
+                      selected: isPreset(ExportPreset.pdfs),
+                      onTap: () => setState(() => _selected = applyExportPreset(preview, ExportPreset.pdfs)),
+                    ),
+                    const SizedBox(width: 8),
+                    FilterPill(
+                      label: 'Incluir atividades',
+                      selected: activitiesOn,
+                      onTap: nonMaterials.isEmpty
+                          ? () {}
+                          : () => setState(() {
+                                if (activitiesOn) {
+                                  _selected.removeAll(nonMaterials.map((i) => i.id));
+                                } else {
+                                  _selected.addAll(nonMaterials.map((i) => i.id));
+                                }
+                              }),
+                    ),
+                    const SizedBox(width: 8),
+                    FilterPill(
+                      label: 'Tudo',
+                      selected: isPreset(ExportPreset.all),
+                      onTap: () => setState(() => _selected = applyExportPreset(preview, ExportPreset.all)),
+                    ),
+                    const SizedBox(width: 8),
+                    FilterPill(
+                      label: 'Limpar',
+                      selected: false,
+                      onTap: () => setState(() => _selected = applyExportPreset(preview, ExportPreset.none)),
+                    ),
+                  ],
+                ),
               ),
+              SpofCard(
+                margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                  title: const Text('Anexar arquivos baixados', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  subtitle: Text('PDFs e cópias offline', style: TextStyle(fontSize: 12, color: p.muted)),
+                  value: _includeFiles,
+                  onChanged: (v) => setState(() => _includeFiles = v),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (visibleSections.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Center(child: Text('Nenhum item corresponde ao filtro.', style: TextStyle(color: p.muted))),
+                )
+              else
+                for (var idx = 0; idx < visibleSections.length; idx++) _buildSection(context, visibleSections[idx].section, visibleSections[idx].items),
             ],
           ),
         ),
-        const Divider(height: 1),
-        Expanded(
-          child: visibleSections.isEmpty
-              ? const Center(
-                  child: Text('Nenhum item corresponde ao filtro.', style: TextStyle(color: muted)),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  itemCount: visibleSections.length,
-                  itemBuilder: (_, idx) {
-                    final entry = visibleSections[idx];
-                    final sec = entry.section;
-                    final items = entry.items;
-                    final selectedInSec = items.where((i) => _selected.contains(i.id)).length;
-                    final bool? secValue = selectedInSec == 0
-                        ? false
-                        : selectedInSec == items.length
-                            ? true
-                            : null;
-
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: Column(
-                        children: [
-                          CheckboxListTile(
-                            tristate: true,
-                            controlAffinity: ListTileControlAffinity.leading,
-                            value: secValue,
-                            title: Text(
-                              sec.name,
-                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                            ),
-                            subtitle: Text('${items.length} ${items.length == 1 ? 'item' : 'itens'}'),
-                            onChanged: (_) => setState(() {
-                              if (selectedInSec == items.length) {
-                                _selected.removeAll(items.map((i) => i.id));
-                              } else {
-                                _selected.addAll(items.map((i) => i.id));
-                              }
-                            }),
-                          ),
-                          const Divider(height: 1),
-                          for (final item in items) _buildItemTile(item),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
-        const Divider(height: 1),
-        SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '${stats.selectedCount} de ${stats.totalCount} itens'
-                    '${stats.pdfCount > 0 ? ' · ${stats.pdfCount} PDF${stats.pdfCount > 1 ? 's' : ''}' : ''}'
-                    '${stats.totalBytes > 0 ? ' · ${formatFileSize(stats.totalBytes)}' : ''}',
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+        Container(
+          decoration: BoxDecoration(color: p.surface, border: Border(top: BorderSide(color: p.border))),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${stats.selectedCount} de ${stats.totalCount} itens',
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        ),
+                        if (detail.isNotEmpty)
+                          Text(detail, style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13, color: p.muted)),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                FilledButton.icon(
-                  onPressed: _selected.isEmpty || _exporting ? null : () => _export(preview),
-                  icon: _exporting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.archive_outlined),
-                  label: Text(_exporting ? 'Gerando…' : 'Exportar (.zip)'),
-                ),
-              ],
+                  const SizedBox(width: 12),
+                  FilledButton.icon(
+                    onPressed: _selected.isEmpty || _exporting ? null : () => _export(preview),
+                    icon: _exporting
+                        ? SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onPrimary),
+                          )
+                        : const Icon(Icons.archive_outlined, size: 18),
+                    label: Text(_exporting ? 'Gerando…' : 'Exportar (.zip)'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -370,20 +369,62 @@ class _CourseExportPageState extends State<CourseExportPage> {
     );
   }
 
-  Widget _buildItemTile(ExportItemPreview item) {
+  Widget _buildSection(BuildContext context, ExportSectionPreview sec, List<ExportItemPreview> items) {
+    final p = Pal.of(context);
+    final selectedInSec = items.where((i) => _selected.contains(i.id)).length;
+    final bool? secValue = selectedInSec == 0
+        ? false
+        : selectedInSec == items.length
+            ? true
+            : null;
+    return SpofCard(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Column(
+        children: [
+          CheckboxListTile(
+            tristate: true,
+            tileColor: p.mutBg,
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+            value: secValue,
+            title: Text(
+              sec.name,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+            secondary: Text(
+              '${items.length} ${items.length == 1 ? 'item' : 'itens'}',
+              style: TextStyle(fontSize: 12, color: p.muted),
+            ),
+            onChanged: (_) => setState(() {
+              if (selectedInSec == items.length) {
+                _selected.removeAll(items.map((i) => i.id));
+              } else {
+                _selected.addAll(items.map((i) => i.id));
+              }
+            }),
+          ),
+          for (final item in items) ...[
+            Divider(height: 1, thickness: 1, color: p.divider),
+            _buildItemTile(context, item),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemTile(BuildContext context, ExportItemPreview item) {
+    final p = Pal.of(context);
     final checked = _selected.contains(item.id);
-    final metaParts = <String>[
-      _activityTypeLabel(item.activityType),
-      if (item.hasLocalFile)
-        'Offline (${formatFileSize(item.fileSizeBytes ?? 0)})'
-      else if (item.url != null)
-        'Apenas link'
-      else
-        'Somente registro',
-    ];
+    final fileMeta = item.hasLocalFile
+        ? '${item.fileName ?? 'Offline'} ·${formatFileSize(item.fileSizeBytes ?? 0)}'
+        : item.url != null
+            ? 'apenas link'
+            : 'somente registro';
+    final typeText = _activityTypeLabel(item.activityType);
 
     return CheckboxListTile(
       controlAffinity: ListTileControlAffinity.leading,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       value: checked,
       onChanged: (v) => setState(() {
         if (v == true) {
@@ -392,37 +433,45 @@ class _CourseExportPageState extends State<CourseExportPage> {
           _selected.remove(item.id);
         }
       }),
-      title: Row(
-        children: [
-          if (item.isPdf) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(5),
-              ),
-              child: const Text(
-                'PDF',
-                style: TextStyle(
-                  color: Colors.redAccent,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 10.5,
+      title: Text.rich(
+        TextSpan(
+          children: [
+            if (item.isPdf)
+              WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: p.errBg, borderRadius: BorderRadius.circular(5)),
+                  child: Text(
+                    'PDF',
+                    style: TextStyle(color: p.errFg, fontWeight: FontWeight.w700, fontSize: 10.5),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 6),
+            TextSpan(text: item.title),
           ],
-          Expanded(
-            child: Text(
-              item.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: checked ? null : muted),
-            ),
-          ),
-        ],
+        ),
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.3, color: checked ? p.ink : p.muted),
       ),
-      subtitle: Text(metaParts.join(' · ')),
+      subtitle: Text.rich(
+        TextSpan(
+          style: TextStyle(fontSize: 12, color: p.muted),
+          children: [
+            TextSpan(
+              text: typeText,
+              style: item.isMaterial ? null : TextStyle(fontWeight: FontWeight.w600, color: p.warnFg),
+            ),
+            TextSpan(text: ' · $fileMeta'),
+            if (item.dueDate != null)
+              TextSpan(
+                text: ' · prazo ${item.dueDate!.day.toString().padLeft(2, '0')}/${item.dueDate!.month.toString().padLeft(2, '0')}',
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
