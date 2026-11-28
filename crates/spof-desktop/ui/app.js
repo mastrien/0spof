@@ -1403,7 +1403,10 @@ function renderOutbox() {
           <p class="eyebrow">Comprovante</p>
           <h2>${escapeHtml(sel.filename)}</h2>
         </div>
-        <button class="btn btn-secondary btn-proof" data-id="${sel.id}" type="button">Ver dossiê</button>
+        <div class="receipt-actions">
+          <button class="btn btn-secondary btn-proof" data-id="${sel.id}" type="button">Ver dossiê</button>
+          <button class="btn btn-secondary btn-export-proof" data-id="${sel.id}" type="button">Exportar comprovante</button>
+        </div>
       </div>
       <div class="receipt-body">
         <div class="timeline">${renderTimeline(outboxSteps(sel))}</div>
@@ -1428,6 +1431,9 @@ function renderOutbox() {
       </div>`;
     detail.querySelectorAll(".btn-proof").forEach((btn) => {
       btn.addEventListener("click", () => openProof(btn.getAttribute("data-id")));
+    });
+    detail.querySelectorAll(".btn-export-proof").forEach((btn) => {
+      btn.addEventListener("click", () => exportProof(parseInt(btn.getAttribute("data-id"), 10)));
     });
   }
 }
@@ -1677,10 +1683,36 @@ const proofText = document.getElementById("proof-text");
 const btnCloseModal = document.getElementById("btn-close-modal");
 const btnCopyProof = document.getElementById("btn-copy-proof");
 
+// Salva o comprovante como arquivo de texto (o mesmo relatório do dossiê).
+function downloadTextFile(filename, text) {
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function exportProof(outboxId) {
+  try {
+    const proof = await invoke("get_submission_proof", { outboxId });
+    const base = String(proof.filename).replace(/\.[^.]*$/, "").replace(/[^\w.-]+/g, "_");
+    downloadTextFile(`comprovante-0spof-${base}-${proof.assign_id}.txt`, proof.formatted_report);
+  } catch (err) {
+    alert("Erro ao exportar comprovante: " + err);
+  }
+}
+
+let currentProofId = null;
+
 async function openProof(outboxId) {
   try {
     const proof = await invoke("get_submission_proof", { outboxId: parseInt(outboxId, 10) });
     proofText.innerText = proof.formatted_report;
+    currentProofId = parseInt(outboxId, 10);
     proofModal.classList.remove("hidden");
   } catch (err) {
     alert("Erro ao obter comprovante: " + err);
@@ -1688,6 +1720,9 @@ async function openProof(outboxId) {
 }
 
 btnCloseModal.addEventListener("click", () => proofModal.classList.add("hidden"));
+document.getElementById("btn-save-proof")?.addEventListener("click", () => {
+  if (currentProofId !== null) exportProof(currentProofId);
+});
 btnCopyProof.addEventListener("click", () => {
   navigator.clipboard.writeText(proofText.innerText);
   alert("Comprovante copiado para a área de transferência!");

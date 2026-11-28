@@ -1689,6 +1689,13 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.receipt-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .receipt-head .btn {
   height: 34px;
 }
@@ -2270,6 +2277,7 @@ h3 {
   padding: 16px 26px 20px;
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
 }
 
 .export-modal-content {
