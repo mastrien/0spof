@@ -1483,9 +1483,71 @@ function setAssignTarget(assignId) {
 function resetEnqueueForm() {
   formEnqueue.reset();
   document.getElementById("check-tsa").checked = true;
+  if (filePicked) filePicked.hidden = true;
   populateCourseSelect();
   assignIdInput.readOnly = false;
   if (assignIdHint) assignIdHint.innerText = ASSIGN_HINT_DEFAULT;
+}
+
+// Seleção do arquivo: diálogo nativo do Tauri, arrastar e soltar ou caminho digitado.
+const filePathInput = document.getElementById("file-path");
+const filePicked = document.getElementById("file-picked");
+const fileDrop = document.getElementById("file-drop");
+
+async function showPickedFile() {
+  const path = filePathInput.value.trim();
+  if (!path) {
+    filePicked.hidden = true;
+    return;
+  }
+  filePicked.hidden = false;
+  try {
+    const info = await invoke("file_info", { path });
+    filePicked.className = "file-picked";
+    filePicked.innerText = `${info.name} · ${formatBytes(info.size_bytes)}`;
+  } catch (err) {
+    filePicked.className = "file-picked bad";
+    filePicked.innerText = String(err);
+  }
+}
+
+function setPickedFile(path) {
+  filePathInput.value = path;
+  return showPickedFile();
+}
+
+async function pickFile() {
+  const dialog = window.__TAURI__ && window.__TAURI__.dialog;
+  if (!dialog || typeof dialog.open !== "function") {
+    filePathInput.focus();
+    return;
+  }
+  try {
+    const selected = await dialog.open({ multiple: false, directory: false });
+    if (selected) await setPickedFile(typeof selected === "string" ? selected : selected.path);
+  } catch (err) {
+    alert("Erro ao abrir o seletor de arquivos: " + err);
+  }
+}
+
+document.getElementById("btn-pick-file")?.addEventListener("click", pickFile);
+filePathInput?.addEventListener("change", showPickedFile);
+
+if (window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.listen === "function") {
+  const ev = window.__TAURI__.event;
+  ev.listen("tauri://drag-enter", () => {
+    switchTab("queue-modal");
+    fileDrop?.classList.add("dragging");
+  });
+  ev.listen("tauri://drag-leave", () => fileDrop?.classList.remove("dragging"));
+  ev.listen("tauri://drag-drop", (e) => {
+    fileDrop?.classList.remove("dragging");
+    const paths = e && e.payload && e.payload.paths;
+    if (paths && paths.length > 0) {
+      switchTab("queue-modal");
+      setPickedFile(paths[0]);
+    }
+  });
 }
 
 assignCourseSel?.addEventListener("change", populateTaskSelect);

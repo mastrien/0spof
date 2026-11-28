@@ -74,6 +74,10 @@ pub fn handle_search(
     api::search(database, query, limit)
 }
 
+pub fn handle_file_info(path: &str) -> Result<spof_core::api::dto::FileInfoDto, String> {
+    api::file_info(path)
+}
+
 pub fn handle_get_outbox_items(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
     api::outbox_history(database)
 }

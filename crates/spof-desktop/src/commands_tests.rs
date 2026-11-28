@@ -191,3 +191,13 @@ fn test_desktop_search_handler() {
     assert_eq!(hits[0].kind, "course");
     assert!(handle_search(&db, "", None).unwrap().is_empty());
 }
+
+#[test]
+fn test_desktop_file_info_handler() {
+    let mut temp = NamedTempFile::new().unwrap();
+    temp.write_all(b"abc").unwrap();
+    temp.flush().unwrap();
+    let info = handle_file_info(temp.path().to_str().unwrap()).unwrap();
+    assert_eq!(info.size_bytes, 3);
+    assert!(handle_file_info("/definitivamente/nao/existe").is_err());
+}

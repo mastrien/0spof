@@ -79,6 +79,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             ipc::get_system_status,
@@ -106,6 +107,7 @@ pub fn run() {
             ipc::get_last_sync_report,
             ipc::get_storage_info,
             ipc::search_local,
+            ipc::file_info,
             ipc::check_for_updates,
             ipc::install_update,
             ipc::get_sync_info,

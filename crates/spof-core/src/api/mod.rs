@@ -233,6 +233,25 @@ pub async fn sync_moodle(
     Ok(summary)
 }
 
+/// Confere que o caminho é um arquivo legível e devolve nome e tamanho (para a tela de entrega).
+pub fn file_info(path: &str) -> Result<dto::FileInfoDto, String> {
+    let p = Path::new(path.trim());
+    let meta = std::fs::metadata(p).map_err(|_| format!("Arquivo não encontrado: {path}"))?;
+    if !meta.is_file() {
+        return Err(format!("O caminho não é um arquivo: {path}"));
+    }
+    let name = p
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "Nome de arquivo inválido".to_string())?
+        .to_string();
+    Ok(dto::FileInfoDto {
+        path: p.to_string_lossy().to_string(),
+        name,
+        size_bytes: meta.len(),
+    })
+}
+
 /// Busca global em disciplinas, atividades e recursos.
 pub fn search(
     database: &Database,
@@ -595,5 +614,22 @@ mod tests {
         let proof = submission_proof(&db, id).unwrap();
         assert!(proof.formatted_report.contains("Folga em relação ao prazo"));
         assert!(proof.formatted_report.contains("antes do prazo"));
+    }
+
+    #[test]
+    fn file_info_reports_name_and_size_and_rejects_bad_paths() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let file = dir.path().join("trabalho.pdf");
+        std::fs::write(&file, b"12345").unwrap();
+        let info = file_info(file.to_str().unwrap()).unwrap();
+        assert_eq!(info.name, "trabalho.pdf");
+        assert_eq!(info.size_bytes, 5);
+
+        assert!(file_info(dir.path().to_str().unwrap())
+            .unwrap_err()
+            .contains("não é um arquivo"));
+        assert!(file_info("/nao/existe.pdf")
+            .unwrap_err()
+            .contains("não encontrado"));
     }
 }

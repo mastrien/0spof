@@ -222,3 +222,11 @@ pub struct SearchHitDto {
     #[serde(default)]
     pub url: Option<String>,
 }
+
+/// Dados básicos de um arquivo escolhido para entrega.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FileInfoDto {
+    pub path: String,
+    pub name: String,
+    pub size_bytes: u64,
+}

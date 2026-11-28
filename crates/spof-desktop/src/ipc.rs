@@ -204,6 +204,11 @@ pub fn search_local(
 }
 
 #[tauri::command]
+pub fn file_info(path: String) -> Result<crate::dto::FileInfoDto, String> {
+    crate::commands::handle_file_info(&path)
+}
+
+#[tauri::command]
 pub fn get_app_version() -> String {
     handle_get_app_version()
 }
