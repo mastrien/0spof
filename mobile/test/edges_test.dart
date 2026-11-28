@@ -68,7 +68,7 @@ void main() {
           'Selo pronto': p.infoBg,
           'Falhou': p.errBg,
           'Enviando': p.infoBg,
-          'Confirmado': p.okBg,
+          'Marcada como enviada': p.okBg,
         };
         expected.forEach((text, bg) {
           final chip = find.descendant(of: find.widgetWithText(StatusChip, text), matching: find.byType(Container)).first;
@@ -124,7 +124,7 @@ void main() {
       });
 
       testWidgets('aviso "Moodle desconectado" só com entrega pendente e sem sessão', (tester) async {
-        const aviso = 'Moodle desconectado · entre em Ajustes para enviar';
+        const aviso = 'Moodle desconectado · o envio é manual, pelo site do Moodle';
         // pendente + sem sessão: aparece
         await pumpOutbox(tester, FakeStore()..outbox = [outboxItem(1, 'pending', token: true)]);
         expect(find.text(aviso), findsOneWidget);

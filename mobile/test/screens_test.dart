@@ -120,7 +120,7 @@ void main() {
     });
 
     test('rótulos', () {
-      expect(outboxStepLabel(outboxSteps('delivered', true)), 'Confirmado');
+      expect(outboxStepLabel(outboxSteps('delivered', true)), 'Marcada como enviada');
       expect(outboxStepLabel(outboxSteps('in_flight', true)), 'Enviando');
       expect(outboxStepLabel(outboxSteps('pending', false)), 'Sem selo');
       expect(outboxStepLabel(outboxSteps('in_flight', false)), 'Enviando');
@@ -200,7 +200,7 @@ void main() {
         expect(find.text('Selo pronto'), findsOneWidget);
         expect(find.text('Enviando'), findsWidgets);
         expect(find.text('Falhou'), findsOneWidget);
-        expect(find.text('Confirmado'), findsWidgets);
+        expect(find.text('Marcada como enviada'), findsWidgets);
         expect(find.textContaining('Moodle desconectado'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
