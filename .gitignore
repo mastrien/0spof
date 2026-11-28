@@ -36,3 +36,6 @@ mobile/rust_builder/cargokit/build_tool/.dart_tool/
 mobile/android/build/
 mobile/android/.gradle/
 mobile/android/.kotlin/
+
+# Esquema por plataforma gerado pelo build do Tauri em Linux (nao versionado)
+crates/spof-desktop/gen/schemas/linux-schema.json
