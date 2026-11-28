@@ -6,7 +6,7 @@
 
 **0spof** é um ecossistema offline-first projetado para eliminar o **Single Point of Failure (SPOF)** representado pelas plataformas de aprendizagem institucionais (como o Moodle). 
 
-Ele permite que estudantes consultem materiais, prazos e notas localmente e enfileirem submissões de tarefas durante indisponibilidades do servidor, com **comprovação criptográfica de entrega pré-prazo (RFC 3161 Trusted Timestamping)** e reenvio automático via padrão Outbox.
+Ele permite que estudantes consultem materiais, prazos e notas localmente e registrem localmente os arquivos de suas tarefas durante indisponibilidades do servidor, com **hash SHA-256 e token de tempo (RFC 3161 Trusted Timestamping)** guardados em uma fila (padrão Outbox). O 0spof **não envia** o arquivo ao Moodle nem reenvia automaticamente: a entrega é feita pelo usuário, e a assinatura do token não é verificada pelo aplicativo.
 
 ---
 
@@ -31,7 +31,7 @@ O projeto é estruturado como um monorepo Cargo em Rust:
 - **Desenvolvimento Guiado por Testes (TDD):** Novas funcionalidades são acompanhadas de testes unitários e de integração antes da implementação.
 - **Quality Gate no CI:** Mínimo de 70% de cobertura de código obrigatória, com proibição de regressão.
 - **Privacidade & LGPD:** Os dados e credenciais pertencem ao usuário e permanecem estritamente em armazenamento local criptografado.
-- **Prova de Existência Criptográfica:** Uso de carimbo de tempo auditável (RFC 3161 / TSA) para atestar a conclusão de tarefas antes de prazos de entrega quando o servidor estiver fora do ar.
+- **Prova de Existência Criptográfica:** Uso de token de carimbo de tempo (RFC 3161 / TSA) registrado junto ao hash do arquivo. O horário é apenas lido do token (assinatura não verificada) e não constitui prova de entrega.
 
 ---
 
@@ -56,9 +56,9 @@ O `0spof-mcp` permite que agentes de IA (como Claude Desktop, Gemini CLI ou Curs
 - `get_deadlines`: Lista prazos acadêmicos futuros e tarefas não entregues.
 - `get_courses`: Lista disciplinas matriculadas e cacheadas localmente.
 - `get_course_sections`: Consulta tópicos e materiais de aula da disciplina.
-- `queue_submission`: Enfileira arquivo para entrega com cálculo de hash SHA-256 e carimbo de tempo RFC 3161 opcional.
-- `get_submission_proof`: Gera dossiê/comprovante criptográfico auditável.
-- `get_outbox_status`: Monitora tarefas na fila de reenvio automático.
+- `queue_submission`: Registra o arquivo localmente com hash SHA-256 e token de tempo RFC 3161 opcional (não envia ao Moodle).
+- `get_submission_proof`: Gera o registro local (hash e token de tempo; não é prova de entrega).
+- `get_outbox_status`: Lista os arquivos registrados na fila de entregas (sem envio automático).
 
 ---
 
