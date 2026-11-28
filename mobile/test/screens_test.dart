@@ -162,10 +162,10 @@ void main() {
       await tester.tap(find.text('abrir'));
       await tester.pumpAndSettle();
       expect(find.text('Nova entrega'), findsOneWidget);
-      expect(find.text('Enfileirar com selo criptográfico'), findsOneWidget);
+      expect(find.text('Registrar entrega'), findsOneWidget);
       await tester.tap(find.text('Gerar carimbo de tempo'));
       await tester.pump();
-      expect(find.text('Enfileirar sem carimbo'), findsOneWidget);
+      expect(find.text('Registrar sem carimbo'), findsOneWidget);
       // sem arquivo escolhido, o botão fica desabilitado
       final btn = tester.widget<FilledButton>(find.byType(FilledButton));
       expect(btn.onPressed, isNull);
@@ -218,7 +218,7 @@ void main() {
         expect(find.text('Conectado ao Moodle'), findsOneWidget);
         expect(find.text('moodle.test'), findsOneWidget);
         expect(find.text('Versão 0.9.0'), findsOneWidget);
-        expect(find.text('Atualizado'), findsOneWidget);
+        expect(find.text('Atualizado'), findsNothing, reason: 'sem checagem ainda, não afirma nada');
         expect(tester.takeException(), isNull);
       });
     }
