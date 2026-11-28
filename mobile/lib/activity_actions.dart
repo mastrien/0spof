@@ -5,7 +5,6 @@ import 'package:open_filex/open_filex.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'store.dart';
-import 'theme.dart';
 
 void _toast(BuildContext context, String msg) =>
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -103,16 +102,23 @@ Future<void> pickAndEnqueue(BuildContext context, Store store, int assignId) asy
   final picked = await FilePicker.pickFiles();
   final path = picked.isEmpty ? null : picked.first.path;
   if (path == null || !context.mounted) return;
-  _toast(context, 'Calculando hash e pedindo carimbo de tempo…');
+  await enqueueFile(context, store, assignId, path);
+}
+
+/// Enfileira o arquivo já escolhido; com `fetchTsa` pede o carimbo RFC 3161.
+Future<void> enqueueFile(BuildContext context, Store store, int assignId, String path, {bool fetchTsa = true}) async {
+  _toast(context, fetchTsa ? 'Calculando hash e pedindo carimbo de tempo…' : 'Calculando hash…');
   try {
-    final r = await store.enqueueSubmission(assignId, path);
+    final r = await store.enqueueSubmission(assignId, path, fetchTsa: fetchTsa);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     _toast(
       context,
       r.hasTsaToken
           ? 'Entrega #${r.outboxId} na fila, com carimbo RFC 3161.'
-          : 'Entrega #${r.outboxId} na fila. Sem carimbo (TSA fora do ar); o hash local vale como prova.',
+          : fetchTsa
+              ? 'Entrega #${r.outboxId} na fila. Sem carimbo (TSA fora do ar); o hash local vale como prova.'
+              : 'Entrega #${r.outboxId} na fila, sem carimbo de tempo.',
     );
   } catch (e) {
     if (context.mounted) _toast(context, 'Falha ao enfileirar: $e');
@@ -128,7 +134,7 @@ Future<void> showProof(BuildContext context, Store store, int outboxId) async {
       builder: (d) => AlertDialog(
         title: Text('Comprovante · ${p.filename}', maxLines: 2, overflow: TextOverflow.ellipsis),
         content: SingleChildScrollView(
-          child: SelectableText(p.report, style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: ink)),
+          child: SelectableText(p.report, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
         ),
         actions: [
           TextButton(
