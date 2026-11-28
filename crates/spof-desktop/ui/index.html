@@ -111,6 +111,7 @@
               <div><dt>Aguardando entrega</dt><dd><b id="metric-outbox">0</b></dd></div>
               <div><dt>Sessão Moodle</dt><dd><b id="protect-session">—</b></dd></div>
               <div><dt>Último sync</dt><dd><b id="protect-lastsync">—</b></dd></div>
+              <div><dt>Dados locais</dt><dd><b id="protect-storage" title="Banco + arquivos baixados">—</b></dd></div>
             </dl>
           </section>
         </div>
@@ -138,9 +139,10 @@
               <div id="dashboard-outbox-list" class="mini-outbox"><p class="muted-line">Nenhum envio na fila.</p></div>
             </section>
             <section class="card info-card">
-              <h2>Modo offline</h2>
+              <h2>Última sincronização</h2>
               <p class="card-sub" id="last-sync-line">Ainda não sincronizado.</p>
-              <p class="info-text">Ao sincronizar, o 0spof guarda seções, enunciados e baixa apostilas em PDF, imagens e páginas HTML. Vídeos são identificados e podem ser baixados sob demanda na página de cada disciplina.</p>
+              <ul id="last-sync-changes" class="sync-changes"></ul>
+              <p class="info-text">Modo offline: ao sincronizar, o 0spof guarda seções, enunciados e baixa apostilas em PDF, imagens e páginas HTML. Vídeos podem ser baixados sob demanda na página de cada disciplina.</p>
             </section>
           </div>
         </div>

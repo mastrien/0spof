@@ -54,6 +54,18 @@ pub fn handle_get_course_details(
     api::course_details(database, course_id)
 }
 
+pub fn handle_get_last_sync_report(
+    database: &Database,
+) -> Result<Option<spof_core::api::dto::SyncReportDto>, String> {
+    api::last_sync_report(database)
+}
+
+pub fn handle_get_storage_info(
+    database: &Database,
+) -> Result<spof_core::api::dto::StorageInfoDto, String> {
+    api::storage_info(database)
+}
+
 pub fn handle_get_outbox_items(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
     api::outbox_history(database)
 }

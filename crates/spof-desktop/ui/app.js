@@ -68,6 +68,8 @@ const state = {
   session: { is_authenticated: false, base_url: null },
   // id da atividade -> atividade + dados da disciplina (montado a partir de get_course_details)
   activities: new Map(),
+  syncReport: null,
+  storage: null,
   deadlineView: "pending",
   selectedOutboxId: null,
   nextDue: null,
@@ -249,6 +251,7 @@ async function refreshData() {
     await loadActivityIndex();
     await loadDeadlines();
     await loadOutbox();
+    await loadSyncAndStorage();
     renderCourses();
     renderDashboard();
     renderOutbox();
@@ -294,6 +297,19 @@ async function loadActivityIndex() {
     })
   );
   state.activities = idx;
+}
+
+async function loadSyncAndStorage() {
+  try {
+    state.syncReport = await invoke("get_last_sync_report");
+  } catch (_) {
+    state.syncReport = null;
+  }
+  try {
+    state.storage = await invoke("get_storage_info");
+  } catch (_) {
+    state.storage = null;
+  }
 }
 
 async function loadDeadlines() {
@@ -577,8 +593,39 @@ function renderProtect() {
   sess.className = state.session.is_authenticated ? "tone-ok" : "tone-warn";
   const last = lastSyncIso();
   document.getElementById("protect-lastsync").innerText = last ? relativeTime(last) : "Nunca";
+  const storageEl = document.getElementById("protect-storage");
+  if (storageEl) storageEl.innerText = state.storage ? formatBytes(state.storage.total_bytes) : "—";
+  renderSyncReport(last);
+}
+
+const SYNC_CHANGE_LABELS = {
+  new_resource: "Novo material",
+  new_activity: "Nova atividade",
+  deadline_changed: "Prazo alterado",
+  file_cached: "Arquivo baixado",
+};
+
+function renderSyncReport(lastIso) {
   const line = document.getElementById("last-sync-line");
-  if (line) line.innerText = last ? `Última sincronização ${relativeTime(last)} · ${formatDate(last)}` : "Ainda não sincronizado.";
+  const list = document.getElementById("last-sync-changes");
+  const report = state.syncReport;
+  const when = report ? report.synced_at : lastIso;
+  if (line) {
+    if (!when) line.innerText = "Ainda não sincronizado.";
+    else if (!report) line.innerText = `${formatDate(when)} · ${relativeTime(when)}`;
+    else if (report.changes_total === 0) line.innerText = `${formatDate(when)} · nenhuma novidade`;
+    else line.innerText = `${formatDate(when)} · ${report.changes_total} ${report.changes_total === 1 ? "novidade" : "novidades"}`;
+  }
+  if (!list) return;
+  const items = report ? report.changes : [];
+  const extra = report ? report.changes_total - items.length : 0;
+  list.innerHTML =
+    items
+      .map(
+        (c) =>
+          `<li><b>${escapeHtml(SYNC_CHANGE_LABELS[c.kind] || c.kind)}</b> em <b>${escapeHtml(c.course_short)}</b> — ${escapeHtml(c.title)}${c.detail ? ` <span class="sync-detail">(${escapeHtml(c.detail)})</span>` : ""}</li>`
+      )
+      .join("") + (extra > 0 ? `<li class="sync-more">+ ${extra} ${extra === 1 ? "outra novidade" : "outras novidades"}</li>` : "");
 }
 
 // "2 dias e 13 h", "5 h 10 min" ou "42 min" a partir de segundos.

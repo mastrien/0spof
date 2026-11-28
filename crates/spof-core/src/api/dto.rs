@@ -171,3 +171,37 @@ pub struct UpdateInfoDto {
     pub release_url: String,
     pub release_notes: Option<String>,
 }
+
+/// Uma novidade detectada na última sincronização.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncChangeDto {
+    /// `new_resource`, `new_activity`, `deadline_changed` ou `file_cached`.
+    pub kind: String,
+    pub title: String,
+    pub course_short: String,
+    /// Detalhe legível (ex.: prazo antigo → novo).
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// Resumo da última sincronização feita neste aparelho.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncReportDto {
+    pub synced_at: String,
+    pub courses_synced: usize,
+    pub sections_synced: usize,
+    pub activities_synced: usize,
+    pub resources_cached: usize,
+    /// Total de novidades; `changes` traz só as primeiras.
+    pub changes_total: usize,
+    pub changes: Vec<SyncChangeDto>,
+}
+
+/// Espaço usado localmente.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StorageInfoDto {
+    pub database_bytes: u64,
+    pub files_bytes: u64,
+    pub files_count: usize,
+    pub total_bytes: u64,
+}

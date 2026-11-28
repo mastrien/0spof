@@ -181,6 +181,20 @@ pub fn import_package(
 }
 
 #[tauri::command]
+pub fn get_last_sync_report(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<Option<crate::dto::SyncReportDto>, String> {
+    crate::commands::handle_get_last_sync_report(&state.db)
+}
+
+#[tauri::command]
+pub fn get_storage_info(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<crate::dto::StorageInfoDto, String> {
+    crate::commands::handle_get_storage_info(&state.db)
+}
+
+#[tauri::command]
 pub fn get_app_version() -> String {
     handle_get_app_version()
 }

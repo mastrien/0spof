@@ -4,6 +4,7 @@
 //! Nada aqui imprime ou abre janelas.
 
 pub mod dto;
+pub mod sync_report;
 
 use crate::auth::{MoodleClient, MoodleSession};
 use crate::crawler::{default_cache_dir, CourseCrawler};
@@ -215,16 +216,30 @@ pub async fn sync_moodle(
     session: MoodleSession,
     cache_dir: Option<PathBuf>,
 ) -> Result<SyncSummaryDto, String> {
+    let before = sync_report::snapshot(database);
     let result = crawler_for(database, session, cache_dir)?
         .sync_all()
         .await
         .map_err(|e| format!("Falha na sincronização: {e}"))?;
-    Ok(SyncSummaryDto {
+    let summary = SyncSummaryDto {
         courses_synced: result.courses_synced,
         sections_synced: result.sections_synced,
         activities_synced: result.activities_synced,
         resources_cached: result.resources_cached,
-    })
+    };
+    let after = sync_report::snapshot(database);
+    sync_report::record_sync_report(database, &summary, &before, &after);
+    Ok(summary)
+}
+
+/// Novidades da última sincronização (`None` se este aparelho ainda não sincronizou).
+pub fn last_sync_report(database: &Database) -> Result<Option<dto::SyncReportDto>, String> {
+    sync_report::last_sync_report(database)
+}
+
+/// Espaço usado pelo banco e pelos arquivos baixados.
+pub fn storage_info(database: &Database) -> Result<dto::StorageInfoDto, String> {
+    sync_report::storage_info(database)
 }
 
 pub async fn download_activity_media(

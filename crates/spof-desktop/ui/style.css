@@ -941,6 +941,26 @@ h3 {
   background: var(--risk);
 }
 
+.sync-changes {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.sync-changes:empty {
+  display: none;
+}
+
+.sync-detail,
+.sync-more {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .info-text {
   font-size: 13px;
   color: var(--ink-2);

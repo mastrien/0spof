@@ -1,0 +1,329 @@
+//! Resumo da última sincronização ("novidades") e uso de disco local.
+//!
+//! A comparação é feita no cliente: um retrato dos dados antes e depois do crawl, guardado em
+//! `app_meta` (configuração local, não sincronizada entre aparelhos).
+
+use super::dto::{StorageInfoDto, SyncChangeDto, SyncReportDto, SyncSummaryDto};
+use crate::storage::Database;
+use chrono::{DateTime, Utc};
+use std::collections::HashMap;
+
+pub const LAST_SYNC_REPORT_KEY: &str = "last_sync_report";
+/// Quantas novidades detalhadas guardar; o total real vai em `changes_total`.
+pub const MAX_LISTED_CHANGES: usize = 8;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActivitySnap {
+    pub title: String,
+    pub activity_type: String,
+    pub course_short: String,
+    pub due_date: Option<DateTime<Utc>>,
+    pub has_file: bool,
+}
+
+pub type Snapshot = HashMap<i64, ActivitySnap>;
+
+fn is_material_type(t: &str) -> bool {
+    matches!(t, "resource" | "page" | "folder" | "url")
+}
+
+/// Retrato de todas as atividades locais, indexado pelo id do Moodle.
+pub fn snapshot(database: &Database) -> Snapshot {
+    let mut snap = Snapshot::new();
+    for course in database.get_courses().unwrap_or_default() {
+        for section in database
+            .get_sections_by_course(course.id)
+            .unwrap_or_default()
+        {
+            for act in section.activities {
+                snap.insert(
+                    act.id,
+                    ActivitySnap {
+                        title: act.title,
+                        activity_type: act.activity_type.as_str().to_string(),
+                        course_short: course.shortname.clone(),
+                        due_date: act.due_date,
+                        has_file: act.local_file_path.is_some_and(|p| !p.is_empty()),
+                    },
+                );
+            }
+        }
+    }
+    snap
+}
+
+fn change(kind: &str, snap: &ActivitySnap, detail: Option<String>) -> SyncChangeDto {
+    SyncChangeDto {
+        kind: kind.to_string(),
+        title: snap.title.clone(),
+        course_short: snap.course_short.clone(),
+        detail,
+    }
+}
+
+/// Novidades entre dois retratos: recursos/atividades novos, prazos alterados e arquivos baixados.
+/// Devolve a lista completa, ordenada de forma estável (tipo e depois título).
+pub fn diff_snapshots(before: &Snapshot, after: &Snapshot) -> Vec<SyncChangeDto> {
+    let mut changes = Vec::new();
+    let mut ids: Vec<_> = after.keys().copied().collect();
+    ids.sort_unstable();
+    for id in ids {
+        let now = &after[&id];
+        match before.get(&id) {
+            None => {
+                let kind = if is_material_type(&now.activity_type) {
+                    "new_resource"
+                } else {
+                    "new_activity"
+                };
+                changes.push(change(kind, now, None));
+            }
+            Some(old) => {
+                if old.due_date != now.due_date {
+                    let fmt = |d: Option<DateTime<Utc>>| {
+                        d.map(|d| d.to_rfc3339())
+                            .unwrap_or_else(|| "sem prazo".to_string())
+                    };
+                    changes.push(change(
+                        "deadline_changed",
+                        now,
+                        Some(format!("{} → {}", fmt(old.due_date), fmt(now.due_date))),
+                    ));
+                }
+                if !old.has_file && now.has_file {
+                    changes.push(change("file_cached", now, None));
+                }
+            }
+        }
+    }
+    let rank = |k: &str| match k {
+        "deadline_changed" => 0,
+        "new_activity" => 1,
+        "new_resource" => 2,
+        _ => 3,
+    };
+    changes.sort_by(|a, b| {
+        rank(&a.kind)
+            .cmp(&rank(&b.kind))
+            .then_with(|| a.title.cmp(&b.title))
+    });
+    changes
+}
+
+/// Monta o relatório e o grava como "última sincronização".
+pub fn record_sync_report(
+    database: &Database,
+    summary: &SyncSummaryDto,
+    before: &Snapshot,
+    after: &Snapshot,
+) -> SyncReportDto {
+    let all = diff_snapshots(before, after);
+    let report = SyncReportDto {
+        synced_at: Utc::now().to_rfc3339(),
+        courses_synced: summary.courses_synced,
+        sections_synced: summary.sections_synced,
+        activities_synced: summary.activities_synced,
+        resources_cached: summary.resources_cached,
+        changes_total: all.len(),
+        changes: all.into_iter().take(MAX_LISTED_CHANGES).collect(),
+    };
+    if let Ok(json) = serde_json::to_string(&report) {
+        let _ = database.meta_set(LAST_SYNC_REPORT_KEY, &json);
+    }
+    report
+}
+
+/// Relatório da última sincronização feita neste aparelho (`None` se nunca sincronizou).
+pub fn last_sync_report(database: &Database) -> Result<Option<SyncReportDto>, String> {
+    let raw = database
+        .meta_get(LAST_SYNC_REPORT_KEY)
+        .map_err(|e| e.to_string())?;
+    Ok(raw.and_then(|json| serde_json::from_str(&json).ok()))
+}
+
+/// Espaço usado: banco SQLite (páginas alocadas) + arquivos baixados referenciados pelas atividades.
+pub fn storage_info(database: &Database) -> Result<StorageInfoDto, String> {
+    let database_bytes = database.database_size_bytes().map_err(|e| e.to_string())?;
+    let mut files_bytes = 0u64;
+    let mut files_count = 0usize;
+    for course in database.get_courses().map_err(|e| e.to_string())? {
+        for section in database
+            .get_sections_by_course(course.id)
+            .map_err(|e| e.to_string())?
+        {
+            for act in section.activities {
+                if let Some(path) = act.local_file_path.filter(|p| !p.is_empty()) {
+                    if let Ok(meta) = std::fs::metadata(&path) {
+                        if meta.is_file() {
+                            files_bytes += meta.len();
+                            files_count += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(StorageInfoDto {
+        database_bytes,
+        files_bytes,
+        files_count,
+        total_bytes: database_bytes + files_bytes,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{Activity, ActivityType, Course, Section};
+    use chrono::Duration;
+
+    fn snap(title: &str, ty: &str, due: Option<DateTime<Utc>>, has_file: bool) -> ActivitySnap {
+        ActivitySnap {
+            title: title.into(),
+            activity_type: ty.into(),
+            course_short: "ESW".into(),
+            due_date: due,
+            has_file,
+        }
+    }
+
+    #[test]
+    fn diff_detects_new_changed_and_cached() {
+        let due = Utc::now();
+        let mut before = Snapshot::new();
+        before.insert(1, snap("Relatório", "assign", Some(due), false));
+        before.insert(2, snap("Apostila", "resource", None, false));
+        before.insert(3, snap("Igual", "page", None, true));
+        let mut after = before.clone();
+        after.insert(
+            1,
+            snap("Relatório", "assign", Some(due + Duration::days(1)), false),
+        );
+        after.insert(2, snap("Apostila", "resource", None, true));
+        after.insert(4, snap("Aula 12", "resource", None, false));
+        after.insert(5, snap("Fórum", "forum", None, false));
+
+        let changes = diff_snapshots(&before, &after);
+        let kinds: Vec<_> = changes.iter().map(|c| c.kind.as_str()).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                "deadline_changed",
+                "new_activity",
+                "new_resource",
+                "file_cached"
+            ]
+        );
+        assert!(changes[0].detail.as_ref().unwrap().contains('→'));
+        assert_eq!(changes[2].title, "Aula 12");
+        assert_eq!(changes[2].course_short, "ESW");
+        assert!(diff_snapshots(&after, &after).is_empty());
+    }
+
+    #[test]
+    fn deadline_removed_is_reported_as_sem_prazo() {
+        let mut before = Snapshot::new();
+        before.insert(1, snap("T", "assign", Some(Utc::now()), false));
+        let mut after = Snapshot::new();
+        after.insert(1, snap("T", "assign", None, false));
+        let changes = diff_snapshots(&before, &after);
+        assert!(changes[0].detail.as_ref().unwrap().ends_with("sem prazo"));
+    }
+
+    fn seed(db: &Database, file: Option<String>) {
+        db.upsert_course(&Course {
+            id: 1,
+            fullname: "Engenharia".into(),
+            shortname: "ESW".into(),
+            summary: None,
+            last_synced_at: None,
+            is_muted: false,
+        })
+        .unwrap();
+        db.upsert_section(&Section {
+            id: 10,
+            course_id: 1,
+            name: "S".into(),
+            summary: None,
+            activities: vec![],
+        })
+        .unwrap();
+        db.upsert_activity(&Activity {
+            id: 100,
+            section_id: 10,
+            title: "Livro".into(),
+            activity_type: ActivityType::Resource,
+            url: None,
+            description: None,
+            local_file_path: file,
+            content_mime: None,
+            due_date: None,
+            is_submitted: false,
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn report_is_recorded_truncated_and_read_back() {
+        let db = Database::open_in_memory().unwrap();
+        assert!(last_sync_report(&db).unwrap().is_none());
+
+        let before = Snapshot::new();
+        let mut after = Snapshot::new();
+        for i in 0..12 {
+            after.insert(i, snap(&format!("R{i:02}"), "resource", None, false));
+        }
+        let summary = SyncSummaryDto {
+            courses_synced: 2,
+            sections_synced: 5,
+            activities_synced: 12,
+            resources_cached: 3,
+        };
+        let report = record_sync_report(&db, &summary, &before, &after);
+        assert_eq!(report.changes_total, 12);
+        assert_eq!(report.changes.len(), MAX_LISTED_CHANGES);
+
+        let read = last_sync_report(&db).unwrap().unwrap();
+        assert_eq!(read, report);
+        assert_eq!(read.resources_cached, 3);
+    }
+
+    #[test]
+    fn corrupted_report_reads_as_none() {
+        let db = Database::open_in_memory().unwrap();
+        db.meta_set(LAST_SYNC_REPORT_KEY, "{não é json").unwrap();
+        assert!(last_sync_report(&db).unwrap().is_none());
+    }
+
+    #[test]
+    fn snapshot_reflects_database() {
+        let db = Database::open_in_memory().unwrap();
+        seed(&db, Some("/tmp/x.pdf".into()));
+        let s = snapshot(&db);
+        assert_eq!(s.len(), 1);
+        assert!(s[&100].has_file);
+        assert_eq!(s[&100].course_short, "ESW");
+    }
+
+    #[test]
+    fn storage_info_sums_database_and_existing_files() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let file = dir.path().join("livro.pdf");
+        std::fs::write(&file, vec![0u8; 2048]).unwrap();
+        let db = Database::open_in_memory().unwrap();
+        seed(&db, Some(file.to_string_lossy().to_string()));
+
+        let info = storage_info(&db).unwrap();
+        assert_eq!(info.files_bytes, 2048);
+        assert_eq!(info.files_count, 1);
+        assert!(info.database_bytes > 0);
+        assert_eq!(info.total_bytes, info.database_bytes + 2048);
+
+        // arquivo inexistente não conta
+        let db2 = Database::open_in_memory().unwrap();
+        seed(&db2, Some("/caminho/que/nao/existe.pdf".into()));
+        let info2 = storage_info(&db2).unwrap();
+        assert_eq!(info2.files_bytes, 0);
+        assert_eq!(info2.files_count, 0);
+    }
+}

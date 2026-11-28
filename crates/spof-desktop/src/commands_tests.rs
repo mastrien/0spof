@@ -163,3 +163,13 @@ fn test_desktop_course_details_empty_course() {
     let db = Database::open_in_memory().unwrap();
     assert!(handle_get_course_details(&db, 404).unwrap().is_empty());
 }
+
+#[test]
+fn test_desktop_sync_report_and_storage_info_handlers() {
+    let db = Database::open_in_memory().unwrap();
+    assert!(handle_get_last_sync_report(&db).unwrap().is_none());
+    let info = handle_get_storage_info(&db).unwrap();
+    assert!(info.database_bytes > 0);
+    assert_eq!(info.files_count, 0);
+    assert_eq!(info.total_bytes, info.database_bytes);
+}
