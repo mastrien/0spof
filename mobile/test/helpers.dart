@@ -95,6 +95,12 @@ class FakeStore extends Store {
   @override
   Future<CourseExportPreview> courseExportPreview(int courseId) async => preview ?? exportPreview();
 
+  /// Seções devolvidas por `courseDetails` (o banco real fica no Rust).
+  List<Section> sections = [];
+
+  @override
+  Future<List<Section>> courseDetails(int id) async => sections;
+
   @override
   Future<String> savedMoodleUrl() async => '';
 
@@ -117,3 +123,28 @@ double contrastRatio(Color a, Color b) {
   final hi = la > lb ? la : lb, lo = la > lb ? lb : la;
   return (hi + 0.05) / (lo + 0.05);
 }
+
+/// Data/hora local relativa a agora (ISO sem fuso), para não depender do calendário real.
+String relIso(Duration d) => DateTime.now().add(d).toIso8601String();
+
+Section sectionOf(int id, String name, List<Map<String, dynamic>> acts) => Section.fromJson({
+      'id': id,
+      'name': name,
+      'summary': null,
+      'activities': acts,
+    });
+
+Map<String, dynamic> actJson(int id, String title, String type,
+        {String? mime, String? localPath, String? due, bool submitted = false}) =>
+    {
+      'id': id,
+      'section_id': 1,
+      'title': title,
+      'activity_type': type,
+      'url': null,
+      'description': null,
+      'local_file_path': localPath,
+      'content_mime': mime,
+      'due_date': due,
+      'is_submitted': submitted,
+    };

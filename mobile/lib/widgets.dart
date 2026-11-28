@@ -77,6 +77,7 @@ class HeaderIconButton extends StatelessWidget {
         backgroundColor: p.surface,
         foregroundColor: p.ink,
         fixedSize: const Size(44, 44),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         side: BorderSide(color: p.fieldBorder),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),

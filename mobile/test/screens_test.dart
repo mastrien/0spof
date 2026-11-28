@@ -85,6 +85,20 @@ void main() {
       expect(ok.tone, Tone.ok);
     });
 
+    test('só "failed" conta como falha: in_flight e pending com selo seguem verdes', () {
+      for (final st in ['in_flight', 'pending']) {
+        final b = statusBannerFor(outbox: [outboxItem(1, st, token: true)], pcSyncError: null, pcLastSync: sync, now: now);
+        expect(b.tone, Tone.ok, reason: st);
+        expect(b.text, 'Tudo protegido · sync há 12 min', reason: st);
+      }
+    });
+
+    test('erro de sync tem prioridade sobre entregas com falha', () {
+      final b = statusBannerFor(
+          outbox: [outboxItem(1, 'failed', token: true)], pcSyncError: 'x', pcLastSync: sync, now: now);
+      expect(b.text, 'Falha ao sincronizar com o PC');
+    });
+
     test('erro de sync com o PC é aviso e tem prioridade', () {
       final b = statusBannerFor(outbox: [], pcSyncError: 'x', pcLastSync: sync, now: now);
       expect(b.tone, Tone.warn);
@@ -141,7 +155,7 @@ void main() {
     });
 
     testWidgets('folha Nova entrega alterna o carimbo', (tester) async {
-      final store = FakeStore()..deadlines = [deadline(1, '2026-12-01T10:00:00')];
+      final store = FakeStore()..deadlines = [deadline(1, relIso(const Duration(days: 3)))];
       await tester.pumpWidget(app(Scaffold(body: Builder(
         builder: (c) => TextButton(onPressed: () => showNewDeliverySheet(c, store), child: const Text('abrir')),
       ))));
@@ -170,7 +184,7 @@ void main() {
     for (final b in Brightness.values) {
       testWidgets('tela Entregas (${b.name}, fonte 2x) mostra estados sem estourar', (tester) async {
         final store = FakeStore()
-          ..deadlines = [deadline(1, '2026-12-01T10:00:00')]
+          ..deadlines = [deadline(1, relIso(const Duration(days: 3)))]
           ..outbox = [
             outboxItem(1, 'pending', token: true),
             outboxItem(2, 'in_flight'),
