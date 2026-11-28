@@ -157,7 +157,7 @@ let currentTab = "dashboard";
 const TAB_TITLES = {
   dashboard: "Visão geral",
   courses: "Disciplinas",
-  outbox: "Fila de envio",
+  outbox: "Fila de entregas",
   settings: "Conexão e dados",
 };
 
@@ -167,7 +167,7 @@ function tabEyebrowText(tab) {
     const n = cachedCourses.length;
     return `Base local · ${n} ${n === 1 ? "disciplina" : "disciplinas"}`;
   }
-  if (tab === "outbox") return "Envios protegidos";
+  if (tab === "outbox") return "Arquivos registrados neste computador";
   if (tab === "settings") return "Acesso institucional e dados locais";
   return "0spof / workspace";
 }
@@ -212,15 +212,31 @@ document.getElementById("link-outbox-all")?.addEventListener("click", () => swit
 // ---------------------------------------------------------------------------
 let lastRefreshAt = 0;
 let refreshInFlight = null;
+// Ao focar a janela o refresh só repete após 1 min: mudanças externas (sync com o celular,
+// edição direta do banco) podem levar até 60 s para aparecer; o botão Atualizar é imediato.
 const FOCUS_REFRESH_MIN_MS = 60000;
 
-// Evita refreshes simultâneos (clique + foco) reaproveitando o que já está em andamento.
+let refreshPending = false;
+
+// Um refresh por vez. Se alguém pedir outro durante um em andamento (ex.: acabou de registrar
+// uma entrega ou importar um pacote), o pedido é marcado e o refresh é refeito ao terminar,
+// para a tela não ficar com dados anteriores à mudança. A promessa devolvida só resolve
+// depois do refresh refeito.
 function refreshData() {
-  if (!refreshInFlight) {
-    refreshInFlight = doRefreshData().finally(() => {
-      refreshInFlight = null;
-    });
+  if (refreshInFlight) {
+    refreshPending = true;
+    return refreshInFlight;
   }
+  refreshInFlight = (async () => {
+    try {
+      do {
+        refreshPending = false;
+        await doRefreshData();
+      } while (refreshPending);
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
   return refreshInFlight;
 }
 
@@ -305,7 +321,7 @@ function renderConnectionBanner() {
     title = `${failed.length} ${failed.length === 1 ? "item com falha registrada" : "itens com falha registrada"}`;
     text = latest
       ? `Última tentativa ${relativeTime(latest.last_attempt_at)}${latest.last_error ? `: ${latest.last_error}` : ""}.`
-      : "Revise a fila de envio.";
+      : "Revise a fila de entregas.";
     action = { label: "Ver fila", tab: "outbox" };
   } else if (!state.session.is_authenticated && open.length > 0) {
     title = "Sem sessão do Moodle";
@@ -430,7 +446,7 @@ const DEADLINE_GROUPS = [
   { key: "week", label: "Esta semana" },
   { key: "later", label: "Próximas semanas" },
   { key: "nodate", label: "Sem prazo cadastrado" },
-  { key: "sent", label: "Enviados" },
+  { key: "sent", label: "Marcadas como enviadas" },
 ];
 
 function groupKeyFor(row) {
@@ -448,7 +464,7 @@ function rowChip(row) {
   if (item) {
     if (item.status === "delivered") return `<span class="chip ok">Marcada como enviada</span>`;
     if (item.status === "failed") return `<span class="chip risk">Falha registrada</span>`;
-    if (item.status === "in_flight") return `<span class="chip warn">Em envio</span>`;
+    if (item.status === "in_flight") return `<span class="chip warn">Marcado como em envio</span>`;
     return `<span class="chip info">Registrada</span>`;
   }
   if (row.is_submitted) return `<span class="chip ok">Entregue</span>`;
@@ -469,7 +485,7 @@ function renderDeadlineRow(row) {
   const canQueue = row.type === "assign" && !row.is_submitted && !queued;
   const actions = [
     canQueue
-      ? `<button class="btn btn-primary btn-sm btn-queue-assign" data-assign-id="${row.id}" title="Preparar entrega da tarefa #${row.id}">Enfileirar</button>`
+      ? `<button class="btn btn-primary btn-sm btn-queue-assign" data-assign-id="${row.id}" title="Registrar entrega da tarefa #${row.id}">Registrar</button>`
       : "",
     row.url
       ? `<button class="btn-discreet btn-open-url" data-target="${escapeHtml(row.url)}" title="Abrir no Moodle institucional" aria-label="Abrir no Moodle">${ICON_EXTERNAL}</button>`
@@ -656,7 +672,7 @@ function renderProtect() {
     sub.innerText = "Sincronize o Moodle para guardar o material neste computador.";
   } else if (failed > 0) {
     tone = "warn";
-    title.innerText = "Atenção na fila de envio";
+    title.innerText = "Atenção na fila de entregas";
     sub.innerText = `${failed} ${failed === 1 ? "item com falha registrada" : "itens com falha registrada"}. Revise na fila.`;
   } else if (files.missing > 0) {
     tone = "warn";
@@ -754,7 +770,7 @@ function outboxSteps(item) {
             sub: join(`${tries} ${tries === 1 ? "tentativa" : "tentativas"}`, when(item.last_attempt_at), item.last_error),
           }
         : inFlight
-          ? { state: "active", title: "Em envio", sub: "" }
+          ? { state: "active", title: "Marcado como em envio", sub: "" }
           : { state: "active", title: "Aguardando envio manual", sub: "Entregue o arquivo pelo site do Moodle" },
     delivered
       ? { state: "done", title: "Confirmação", sub: when(item.updated_at) }
@@ -770,19 +786,19 @@ function marginText(item) {
 }
 
 function outboxStatusText(item) {
-  if (item.status === "delivered") return "Confirmado pelo Moodle";
+  if (item.status === "delivered") return "Marcado como enviado";
   if (item.status === "failed") {
     const n = item.retry_count || 0;
-    return `Falha no envio · ${n} ${n === 1 ? "tentativa" : "tentativas"}`;
+    return `Falha registrada · ${n} ${n === 1 ? "tentativa registrada" : "tentativas registradas"}`;
   }
-  if (item.status === "in_flight") return "Em envio";
+  if (item.status === "in_flight") return "Marcado como em envio";
   return "Registrado localmente · aguardando envio manual";
 }
 
 function outboxChip(item) {
   if (item.status === "delivered") return `<span class="chip ok">Marcado como enviado</span>`;
   if (item.status === "failed") return `<span class="chip risk">Falha registrada</span>`;
-  if (item.status === "in_flight") return `<span class="chip warn">Em envio</span>`;
+  if (item.status === "in_flight") return `<span class="chip warn">Marcado como em envio</span>`;
   return `<span class="chip info">${item.has_rfc3161_token ? "Registrado · token RFC 3161" : "Registrado localmente"}</span>`;
 }
 
@@ -791,7 +807,7 @@ function renderMiniOutbox() {
   if (!box) return;
   const open = state.outbox.filter((i) => i.status !== "delivered");
   if (open.length === 0) {
-    box.innerHTML = `<p class="muted-line">Nenhum envio na fila.</p>`;
+    box.innerHTML = `<p class="muted-line">Nenhuma entrega registrada.</p>`;
     return;
   }
   box.innerHTML = open
@@ -1204,7 +1220,7 @@ async function openCourseDetail(courseId) {
                       actionsHtml += `
                         <button class="btn btn-primary btn-queue-assign" data-assign-id="${act.id}">
                           <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                          Enfileirar entrega (#${act.id})
+                          Registrar entrega (#${act.id})
                         </button>
                       `;
                     }
@@ -1422,7 +1438,7 @@ function renderOutbox() {
     return da - db || b.id - a.id;
   });
   if (items.length === 0) {
-    container.innerHTML = "<p class='empty-state'>Nenhuma tarefa na fila de envio.</p>";
+    container.innerHTML = "<p class='empty-state'>Nenhuma entrega registrada.</p>";
     if (detail) detail.style.display = "none";
     return;
   }
@@ -1481,7 +1497,7 @@ function renderOutbox() {
             <code class="hash-block">${escapeHtml(sel.file_hash)}</code>
           </div>
           <div>
-            <div class="fact-label">Selo de tempo</div>
+            <div class="fact-label">Token de tempo (RFC 3161) <span class="unverified">· assinatura não verificada</span></div>
             <div class="fact-value">${sel.has_rfc3161_token ? `Token RFC 3161${sel.timestamped_at ? ` · horário lido do token: ${escapeHtml(formatDate(sel.timestamped_at))}` : ""}<br><small>assinatura não verificada pelo 0spof</small>` : "Nenhum token anexado"}</div>
           </div>
           ${sel.due_date ? `<div>
@@ -1680,14 +1696,14 @@ formEnqueue.addEventListener("submit", async (e) => {
   try {
     const res = await invoke("enqueue_submission", { assignId, filePath, fetchTsa: checkTsa });
     resultBox.className = "result-message success";
-    resultBox.innerText = `Tarefa enfileirada com sucesso! ID: ${res.outbox_id} | SHA-256: ${res.file_hash}`;
+    resultBox.innerText = `Entrega registrada com sucesso! ID: ${res.outbox_id} | SHA-256: ${res.file_hash}`;
     resultBox.style.display = "block";
     resetEnqueueForm();
     state.selectedOutboxId = res.outbox_id;
     await refreshData();
   } catch (err) {
     resultBox.className = "result-message error";
-    resultBox.innerText = `Erro ao enfileirar: ${err}`;
+    resultBox.innerText = `Erro ao registrar entrega: ${err}`;
     resultBox.style.display = "block";
   }
 });
@@ -2398,7 +2414,7 @@ const btnWipeData = document.getElementById("btn-wipe-data");
 if (btnWipeData) {
   btnWipeData.addEventListener("click", async () => {
     const confirmed = confirm(
-      "Atenção: todos os cursos, seções, atividades e itens na fila de envio serão apagados permanentemente do banco local.\n\nDeseja realmente apagar todos os dados?"
+      "Atenção: todos os cursos, seções, atividades e itens na fila de entregas serão apagados permanentemente do banco local.\n\nDeseja realmente apagar todos os dados?"
     );
     if (!confirmed) return;
 

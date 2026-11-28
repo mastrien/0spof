@@ -36,7 +36,7 @@
         </button>
         <button class="nav-item" data-tab="outbox">
           <svg class="nav-svg" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
-          <span class="nav-text">Fila de envio</span>
+          <span class="nav-text">Fila de entregas</span>
           <span class="badge" id="outbox-count">0</span>
         </button>
         <p class="nav-label nav-label-spaced">Sistema</p>
@@ -139,7 +139,7 @@
               <h2>Prazos</h2>
               <div class="segmented" id="deadline-tabs" role="tablist" aria-label="Filtrar prazos">
                 <button type="button" class="seg active" data-deadline-view="pending" role="tab">Pendentes</button>
-                <button type="button" class="seg" data-deadline-view="sent" role="tab">Enviados</button>
+                <button type="button" class="seg" data-deadline-view="sent" role="tab">Marcadas como enviadas</button>
                 <button type="button" class="seg" data-deadline-view="all" role="tab">Todos</button>
               </div>
             </div>
@@ -150,10 +150,10 @@
           <div class="dash-side">
             <section class="card">
               <div class="card-head">
-                <h2>Fila de envio</h2>
+                <h2>Fila de entregas</h2>
                 <button type="button" class="link-btn" id="link-outbox-all">Ver tudo</button>
               </div>
-              <div id="dashboard-outbox-list" class="mini-outbox"><p class="muted-line">Nenhum envio na fila.</p></div>
+              <div id="dashboard-outbox-list" class="mini-outbox"><p class="muted-line">Nenhuma entrega registrada.</p></div>
             </section>
             <section class="card info-card">
               <h2>Última sincronização</h2>
@@ -234,15 +234,15 @@
               <span id="outbox-session-chip" class="chip mut">Verificando sessão…</span>
             </div>
             <section class="card flush">
-              <div id="outbox-list" class="item-list outbox-list">Nenhuma tarefa na fila de envio.</div>
+              <div id="outbox-list" class="item-list outbox-list">Nenhuma entrega registrada.</div>
             </section>
             <section id="outbox-detail" class="card receipt-card" style="display:none;"></section>
           </div>
           <aside class="card form-card" id="new-delivery-card">
             <div>
               <p class="eyebrow">Nova entrega</p>
-              <h2>Enfileirar submissão</h2>
-              <p class="section-description">O 0spof registra e sela o arquivo neste computador. O envio ao Moodle continua sendo feito por você, pelo site.</p>
+              <h2>Registrar entrega</h2>
+              <p class="section-description">O 0spof registra o arquivo neste computador (hash SHA-256 e, se pedido, token RFC 3161; assinatura não verificada). O envio ao Moodle continua sendo feito por você, pelo site.</p>
             </div>
             <form id="form-enqueue" class="submission-form">
               <div class="form-group">
@@ -270,13 +270,13 @@
               <label class="checkbox-group">
                 <input type="checkbox" id="check-tsa" checked>
                 <span>
-                  <strong>Gerar carimbo de tempo</strong>
-                  <small>Prova auditável RFC 3161 de que o arquivo existia antes do prazo.</small>
+                  <strong>Obter token de tempo (RFC 3161)</strong>
+                  <small>Token da autoridade de carimbo; o 0spof lê o horário, mas não verifica a assinatura.</small>
                 </span>
               </label>
               <button type="submit" class="btn btn-primary submit-btn">
                 <svg class="btn-svg" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                Enfileirar com selo criptográfico
+                Registrar com hash e token de tempo
               </button>
             </form>
             <div id="enqueue-result" class="result-message"></div>

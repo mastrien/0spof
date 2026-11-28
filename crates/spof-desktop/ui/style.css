@@ -1806,6 +1806,11 @@ h3 {
   color: var(--ink-2);
 }
 
+.unverified {
+  font-weight: 400;
+  color: var(--warn);
+}
+
 .fact-value {
   margin-top: 3px;
   color: var(--ink);
