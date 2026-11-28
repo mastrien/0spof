@@ -1,7 +1,7 @@
 name: spof_mobile_app
 description: "0spof no celular: Moodle offline-first."
 publish_to: 'none'
-version: 0.4.0+400
+version: 0.5.0+500
 
 environment:
   sdk: ^3.12.0
