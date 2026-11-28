@@ -4,9 +4,6 @@ import 'package:flutter/material.dart';
 /// Verde só para "protegido/confirmado"; âmbar para atenção.
 const blue = Color(0xFF2F5BEA);
 const navy = Color(0xFF14203A);
-const canvas = Color(0xFFF5F6FA);
-const ink = Color(0xFF14203A);
-const muted = Color(0xFF5B6783);
 const green = Color(0xFF1F8A5B);
 const amber = Color(0xFFB45309);
 
@@ -180,13 +177,17 @@ ThemeData buildTheme(Brightness b) {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
     ),
     navigationBarTheme: NavigationBarThemeData(
-      height: 72,
+      height: 84,
       backgroundColor: p.surface,
       surfaceTintColor: Colors.transparent,
       indicatorColor: p.infoBg,
       indicatorShape: const StadiumBorder(),
-      labelTextStyle: WidgetStatePropertyAll(
-        TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: p.ink),
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (s) => TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: s.contains(WidgetState.selected) ? p.infoFg : p.ink,
+        ),
       ),
       iconTheme: WidgetStateProperty.resolveWith(
         (s) => IconThemeData(color: s.contains(WidgetState.selected) ? p.infoFg : p.muted),

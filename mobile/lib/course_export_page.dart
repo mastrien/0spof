@@ -282,7 +282,7 @@ class _CourseExportPageState extends State<CourseExportPage> {
                       label: 'Incluir atividades',
                       selected: activitiesOn,
                       onTap: nonMaterials.isEmpty
-                          ? () {}
+                          ? null
                           : () => setState(() {
                                 if (activitiesOn) {
                                   _selected.removeAll(nonMaterials.map((i) => i.id));
@@ -416,7 +416,7 @@ class _CourseExportPageState extends State<CourseExportPage> {
     final p = Pal.of(context);
     final checked = _selected.contains(item.id);
     final fileMeta = item.hasLocalFile
-        ? '${item.fileName ?? 'Offline'} ·${formatFileSize(item.fileSizeBytes ?? 0)}'
+        ? '${item.fileName ?? 'Offline'} · ${formatFileSize(item.fileSizeBytes ?? 0)}'
         : item.url != null
             ? 'apenas link'
             : 'somente registro';

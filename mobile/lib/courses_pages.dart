@@ -106,10 +106,9 @@ class _CourseCard extends StatelessWidget {
     final p = Pal.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-      child: Opacity(
-        opacity: c.muted ? 0.75 : 1,
-        child: Material(
-          color: p.surface,
+      child: Material(
+          // silenciada: fundo "mut" em vez de opacidade, para manter o contraste do texto
+          color: c.muted ? p.mutBg : p.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: p.border)),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -145,7 +144,6 @@ class _CourseCard extends StatelessWidget {
             ),
           ),
         ),
-      ),
     );
   }
 }

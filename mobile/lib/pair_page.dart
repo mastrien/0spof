@@ -76,7 +76,7 @@ class _PairPageState extends State<PairPage> {
               onPressed: _busy ? null : () => _pair(_manual.text),
               child: _busy ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Parear'),
             ),
-            if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
+            if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
           ],
         ),
       );
