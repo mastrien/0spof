@@ -657,6 +657,8 @@ function renderSyncReport(lastIso) {
   if (line) {
     if (!when) line.innerText = "Ainda não sincronizado.";
     else if (!report) line.innerText = `${formatDate(when)} · ${relativeTime(when)}`;
+    else if (report.first_sync) line.innerText = `${formatDate(when)} · primeira sincronização`;
+    else if (report.comparison_failed) line.innerText = `${formatDate(when)} · novidades indisponíveis (não foi possível comparar)`;
     else if (report.changes_total === 0) line.innerText = `${formatDate(when)} · nenhuma novidade`;
     else line.innerText = `${formatDate(when)} · ${report.changes_total} ${report.changes_total === 1 ? "novidade" : "novidades"}`;
   }

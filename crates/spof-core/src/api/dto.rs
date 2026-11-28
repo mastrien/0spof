@@ -195,6 +195,12 @@ pub struct SyncReportDto {
     /// Total de novidades; `changes` traz só as primeiras.
     pub changes_total: usize,
     pub changes: Vec<SyncChangeDto>,
+    /// Primeira sincronização deste banco: não há "antes" para comparar, então não há novidades.
+    #[serde(default)]
+    pub first_sync: bool,
+    /// Não foi possível ler o banco para comparar; `changes` não é confiável (vazio).
+    #[serde(default)]
+    pub comparison_failed: bool,
 }
 
 /// Espaço usado localmente.

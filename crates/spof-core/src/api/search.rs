@@ -65,35 +65,32 @@ pub fn search(
                 },
             ));
         }
-        for section in database
-            .get_sections_by_course(course.id)
-            .map_err(|e| e.to_string())?
-        {
-            for act in section.activities {
-                if !matches(&format!("{} {}", act.title, course.shortname), &tokens) {
-                    continue;
-                }
-                let prio = u8::from(!fold(&act.title).starts_with(&first));
-                let kind = if is_material_activity(&act) {
-                    "resource"
-                } else {
-                    "activity"
-                };
-                scored.push((
-                    prio,
-                    SearchHitDto {
-                        kind: kind.into(),
-                        id: act.id,
-                        title: act.title,
-                        subtitle: format!("{} · {}", course.shortname, section.name),
-                        course_id: course.id,
-                        course_short: course.shortname.clone(),
-                        activity_type: Some(act.activity_type.as_str().to_string()),
-                        url: act.url,
-                    },
-                ));
-            }
+    }
+    // atividades: uma única consulta com JOIN (sem uma consulta por disciplina)
+    for row in database.list_activity_index().map_err(|e| e.to_string())? {
+        let act = row.activity;
+        if !matches(&format!("{} {}", act.title, row.course_short), &tokens) {
+            continue;
         }
+        let prio = u8::from(!fold(&act.title).starts_with(&first));
+        let kind = if is_material_activity(&act) {
+            "resource"
+        } else {
+            "activity"
+        };
+        scored.push((
+            prio,
+            SearchHitDto {
+                kind: kind.into(),
+                id: act.id,
+                title: act.title,
+                subtitle: format!("{} · {}", row.course_short, row.section_name),
+                course_id: row.course_id,
+                course_short: row.course_short,
+                activity_type: Some(act.activity_type.as_str().to_string()),
+                url: act.url,
+            },
+        ));
     }
 
     let kind_rank = |k: &str| match k {
@@ -199,14 +196,38 @@ mod tests {
     }
 
     #[test]
-    fn all_tokens_must_match_and_prefix_ranks_first() {
+    fn all_tokens_must_match() {
         let db = seeded();
         assert!(search(&db, "modelagem inexistente", None)
             .unwrap()
             .is_empty());
-        // "modelagem" começa o título da tarefa; a seção só aparece no subtítulo
-        let hits = search(&db, "modelagem", None).unwrap();
-        assert_eq!(hits[0].id, 100);
+    }
+
+    #[test]
+    fn titles_starting_with_the_term_rank_before_titles_that_only_contain_it() {
+        let db = seeded();
+        // id menor e título em ordem alfabética anterior, mas só CONTÉM "relacional"
+        db.upsert_activity(&act(
+            1,
+            "Aula sobre modelo relacional",
+            ActivityType::Resource,
+        ))
+        .unwrap();
+        // começa com o termo
+        db.upsert_activity(&act(
+            900,
+            "Relacional: lista de exercícios",
+            ActivityType::Resource,
+        ))
+        .unwrap();
+        let hits = search(&db, "relacional", None).unwrap();
+        let pos = |id: i64| hits.iter().position(|h| h.id == id).unwrap();
+        assert!(
+            pos(900) < pos(1),
+            "prefixo deve vir antes: {:?}",
+            hits.iter().map(|h| &h.title).collect::<Vec<_>>()
+        );
+        assert!(pos(900) < pos(100), "e antes do que só contém na seção");
     }
 
     #[test]

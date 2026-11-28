@@ -28,28 +28,23 @@ fn is_material_type(t: &str) -> bool {
 }
 
 /// Retrato de todas as atividades locais, indexado pelo id do Moodle.
-pub fn snapshot(database: &Database) -> Snapshot {
+/// Propaga erros de leitura: um banco ilegível não pode virar "tudo novo" no diff.
+pub fn snapshot(database: &Database) -> Result<Snapshot, String> {
     let mut snap = Snapshot::new();
-    for course in database.get_courses().unwrap_or_default() {
-        for section in database
-            .get_sections_by_course(course.id)
-            .unwrap_or_default()
-        {
-            for act in section.activities {
-                snap.insert(
-                    act.id,
-                    ActivitySnap {
-                        title: act.title,
-                        activity_type: act.activity_type.as_str().to_string(),
-                        course_short: course.shortname.clone(),
-                        due_date: act.due_date,
-                        has_file: act.local_file_path.is_some_and(|p| !p.is_empty()),
-                    },
-                );
-            }
-        }
+    for row in database.list_activity_index().map_err(|e| e.to_string())? {
+        let act = row.activity;
+        snap.insert(
+            act.id,
+            ActivitySnap {
+                title: act.title,
+                activity_type: act.activity_type.as_str().to_string(),
+                course_short: row.course_short,
+                due_date: act.due_date,
+                has_file: act.local_file_path.is_some_and(|p| !p.is_empty()),
+            },
+        );
     }
-    snap
+    Ok(snap)
 }
 
 fn change(kind: &str, snap: &ActivitySnap, detail: Option<String>) -> SyncChangeDto {
@@ -111,21 +106,30 @@ pub fn diff_snapshots(before: &Snapshot, after: &Snapshot) -> Vec<SyncChangeDto>
 }
 
 /// Monta o relatório e o grava como "última sincronização".
+///
+/// - `before` vazio: primeira sincronização, então nada é "novidade" (`first_sync`).
+/// - `before`/`after` ausentes (erro de leitura): grava sem novidades e marca `comparison_failed`.
 pub fn record_sync_report(
     database: &Database,
     summary: &SyncSummaryDto,
-    before: &Snapshot,
-    after: &Snapshot,
+    before: Option<&Snapshot>,
+    after: Option<&Snapshot>,
 ) -> SyncReportDto {
-    let all = diff_snapshots(before, after);
+    let (changes, first_sync, comparison_failed) = match (before, after) {
+        (Some(b), Some(_)) if b.is_empty() => (Vec::new(), true, false),
+        (Some(b), Some(a)) => (diff_snapshots(b, a), false, false),
+        _ => (Vec::new(), false, true),
+    };
     let report = SyncReportDto {
         synced_at: Utc::now().to_rfc3339(),
         courses_synced: summary.courses_synced,
         sections_synced: summary.sections_synced,
         activities_synced: summary.activities_synced,
         resources_cached: summary.resources_cached,
-        changes_total: all.len(),
-        changes: all.into_iter().take(MAX_LISTED_CHANGES).collect(),
+        changes_total: changes.len(),
+        changes: changes.into_iter().take(MAX_LISTED_CHANGES).collect(),
+        first_sync,
+        comparison_failed,
     };
     if let Ok(json) = serde_json::to_string(&report) {
         let _ = database.meta_set(LAST_SYNC_REPORT_KEY, &json);
@@ -146,19 +150,12 @@ pub fn storage_info(database: &Database) -> Result<StorageInfoDto, String> {
     let database_bytes = database.database_size_bytes().map_err(|e| e.to_string())?;
     let mut files_bytes = 0u64;
     let mut files_count = 0usize;
-    for course in database.get_courses().map_err(|e| e.to_string())? {
-        for section in database
-            .get_sections_by_course(course.id)
-            .map_err(|e| e.to_string())?
-        {
-            for act in section.activities {
-                if let Some(path) = act.local_file_path.filter(|p| !p.is_empty()) {
-                    if let Ok(meta) = std::fs::metadata(&path) {
-                        if meta.is_file() {
-                            files_bytes += meta.len();
-                            files_count += 1;
-                        }
-                    }
+    for row in database.list_activity_index().map_err(|e| e.to_string())? {
+        if let Some(path) = row.activity.local_file_path.filter(|p| !p.is_empty()) {
+            if let Ok(meta) = std::fs::metadata(&path) {
+                if meta.is_file() {
+                    files_bytes += meta.len();
+                    files_count += 1;
                 }
             }
         }
@@ -263,29 +260,84 @@ mod tests {
         .unwrap();
     }
 
+    fn summary() -> SyncSummaryDto {
+        SyncSummaryDto {
+            courses_synced: 2,
+            sections_synced: 5,
+            activities_synced: 12,
+            resources_cached: 3,
+        }
+    }
+
     #[test]
     fn report_is_recorded_truncated_and_read_back() {
         let db = Database::open_in_memory().unwrap();
         assert!(last_sync_report(&db).unwrap().is_none());
 
-        let before = Snapshot::new();
-        let mut after = Snapshot::new();
+        let mut before = Snapshot::new();
+        before.insert(1000, snap("Já existia", "resource", None, false));
+        let mut after = before.clone();
         for i in 0..12 {
             after.insert(i, snap(&format!("R{i:02}"), "resource", None, false));
         }
-        let summary = SyncSummaryDto {
-            courses_synced: 2,
-            sections_synced: 5,
-            activities_synced: 12,
-            resources_cached: 3,
-        };
-        let report = record_sync_report(&db, &summary, &before, &after);
+        let report = record_sync_report(&db, &summary(), Some(&before), Some(&after));
         assert_eq!(report.changes_total, 12);
         assert_eq!(report.changes.len(), MAX_LISTED_CHANGES);
+        assert!(!report.first_sync && !report.comparison_failed);
 
         let read = last_sync_report(&db).unwrap().unwrap();
         assert_eq!(read, report);
         assert_eq!(read.resources_cached, 3);
+    }
+
+    #[test]
+    fn first_sync_does_not_inflate_changes() {
+        let db = Database::open_in_memory().unwrap();
+        let before = Snapshot::new();
+        let mut after = Snapshot::new();
+        for i in 0..300 {
+            after.insert(i, snap(&format!("R{i}"), "resource", None, false));
+        }
+        let report = record_sync_report(&db, &summary(), Some(&before), Some(&after));
+        assert!(report.first_sync);
+        assert_eq!(report.changes_total, 0);
+        assert!(report.changes.is_empty());
+        assert!(last_sync_report(&db).unwrap().unwrap().first_sync);
+    }
+
+    #[test]
+    fn unreadable_snapshot_marks_report_untrusted_instead_of_all_new() {
+        let db = Database::open_in_memory().unwrap();
+        let mut after = Snapshot::new();
+        after.insert(1, snap("X", "resource", None, false));
+        let report = record_sync_report(&db, &summary(), None, Some(&after));
+        assert!(report.comparison_failed);
+        assert!(!report.first_sync);
+        assert_eq!(report.changes_total, 0);
+    }
+
+    #[test]
+    fn snapshot_propagates_database_errors() {
+        let db = Database::open_in_memory().unwrap();
+        db.conn
+            .lock()
+            .unwrap()
+            .execute("DROP TABLE activities", [])
+            .unwrap();
+        assert!(snapshot(&db).is_err());
+        assert!(storage_info(&db).is_err());
+    }
+
+    #[test]
+    fn old_stored_report_without_new_fields_still_parses() {
+        let db = Database::open_in_memory().unwrap();
+        db.meta_set(
+            LAST_SYNC_REPORT_KEY,
+            r#"{"synced_at":"2026-01-01T00:00:00Z","courses_synced":1,"sections_synced":1,"activities_synced":1,"resources_cached":0,"changes_total":0,"changes":[]}"#,
+        )
+        .unwrap();
+        let r = last_sync_report(&db).unwrap().unwrap();
+        assert!(!r.first_sync && !r.comparison_failed);
     }
 
     #[test]
@@ -299,7 +351,7 @@ mod tests {
     fn snapshot_reflects_database() {
         let db = Database::open_in_memory().unwrap();
         seed(&db, Some("/tmp/x.pdf".into()));
-        let s = snapshot(&db);
+        let s = snapshot(&db).unwrap();
         assert_eq!(s.len(), 1);
         assert!(s[&100].has_file);
         assert_eq!(s[&100].course_short, "ESW");

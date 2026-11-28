@@ -17,6 +17,7 @@ pub use course_export::{
     is_material_activity, is_pdf_activity, suggested_course_export_filename, CourseExportSelection,
     ARCHIVE_MANIFEST_NAME,
 };
+pub use courses::ActivityIndexRow;
 
 use crate::error::Result;
 use rusqlite::Connection;

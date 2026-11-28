@@ -201,3 +201,26 @@ fn test_desktop_file_info_handler() {
     assert_eq!(info.size_bytes, 3);
     assert!(handle_file_info("/definitivamente/nao/existe").is_err());
 }
+
+#[test]
+fn test_desktop_outbox_handler_returns_history_including_delivered() {
+    use spof_core::models::OutboxItem;
+    let db = Database::open_in_memory().unwrap();
+    let mut delivered = OutboxItem::new(1, "a.pdf".into(), "h1".into(), "/a".into());
+    delivered.record_success();
+    db.insert_outbox_item(&delivered).unwrap();
+    db.insert_outbox_item(&OutboxItem::new(
+        2,
+        "b.pdf".into(),
+        "h2".into(),
+        "/b".into(),
+    ))
+    .unwrap();
+
+    let items = handle_get_outbox_items(&db).unwrap();
+    assert_eq!(items.len(), 2, "o desktop deve receber também os entregues");
+    assert!(items.iter().any(|i| i.status == "delivered"));
+    assert!(items.iter().any(|i| i.status == "pending"));
+    // contador de pendentes segue contando só o que falta enviar
+    assert_eq!(handle_get_system_status(&db).unwrap().outbox_count, 1);
+}

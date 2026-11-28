@@ -267,3 +267,79 @@ fn test_legacy_schema_migration_without_is_muted() {
     )
     .unwrap();
 }
+
+#[test]
+fn test_activity_index_and_batched_due_dates() {
+    use chrono::Duration;
+    let db = Database::open_in_memory().unwrap();
+    for (cid, short) in [(1, "AAA"), (2, "BBB")] {
+        db.upsert_course(&crate::models::Course {
+            id: cid,
+            fullname: format!("Curso {short}"),
+            shortname: short.into(),
+            summary: None,
+            last_synced_at: None,
+            is_muted: false,
+        })
+        .unwrap();
+        db.upsert_section(&crate::models::Section {
+            id: cid * 10,
+            course_id: cid,
+            name: format!("Seção {short}"),
+            summary: None,
+            activities: vec![],
+        })
+        .unwrap();
+    }
+    let due = chrono::Utc::now() + Duration::days(3);
+    for (id, sec, due_date) in [(1, 10, Some(due)), (2, 20, None), (3, 20, Some(due))] {
+        db.upsert_activity(&crate::models::Activity {
+            id,
+            section_id: sec,
+            title: format!("A{id}"),
+            activity_type: crate::models::ActivityType::Assign,
+            url: None,
+            description: None,
+            local_file_path: None,
+            content_mime: None,
+            due_date,
+            is_submitted: false,
+        })
+        .unwrap();
+    }
+
+    let index = db.list_activity_index().unwrap();
+    assert_eq!(index.len(), 3);
+    assert_eq!(index[0].course_short, "AAA");
+    assert_eq!(index[0].section_name, "Seção AAA");
+    assert_eq!(index[2].course_id, 2);
+
+    let dues = db.get_activity_due_dates(&[1, 2, 3, 999]).unwrap();
+    assert_eq!(dues.len(), 2, "sem prazo e desconhecidos ficam de fora");
+    assert_eq!(dues[&1].to_rfc3339(), due.to_rfc3339());
+    assert!(db.get_activity_due_dates(&[]).unwrap().is_empty());
+}
+
+#[test]
+fn test_outbox_queries_share_row_mapping() {
+    let db = Database::open_in_memory().unwrap();
+    let mut delivered = crate::models::OutboxItem::new(1, "a".into(), "h".into(), "/a".into());
+    delivered.record_success();
+    let id1 = db.insert_outbox_item(&delivered).unwrap();
+    let id2 = db
+        .insert_outbox_item(&crate::models::OutboxItem::new(
+            2,
+            "b".into(),
+            "h2".into(),
+            "/b".into(),
+        ))
+        .unwrap();
+
+    let all = db.get_all_outbox_items().unwrap();
+    assert_eq!(all.len(), 2);
+    assert_eq!(db.get_pending_outbox_items().unwrap().len(), 1);
+    let single = db.get_outbox_item(id1).unwrap().unwrap();
+    assert_eq!(single, all[0]);
+    assert_eq!(db.get_outbox_item(id2).unwrap().unwrap(), all[1]);
+    assert!(db.get_outbox_item(12345).unwrap().is_none());
+}

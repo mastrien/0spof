@@ -122,47 +122,48 @@ pub fn course_details(database: &Database, course_id: i64) -> Result<Vec<Section
         .collect())
 }
 
-fn outbox_item_dto(database: &Database, item: crate::models::OutboxItem) -> OutboxItemDto {
-    let due = database
-        .get_activity(item.assign_id)
-        .ok()
-        .flatten()
-        .and_then(|a| a.due_date);
-    let proof = SubmissionProof::from_outbox_item(&item).with_due_date(due);
-    OutboxItemDto {
-        id: item.id.unwrap_or(0),
-        assign_id: item.assign_id,
-        filename: item.filename,
-        file_hash: item.file_hash,
-        status: item.status.as_str().to_string(),
-        retry_count: item.retry_count,
-        has_rfc3161_token: item.rfc3161_token.is_some(),
-        created_at: item.created_at.to_rfc3339(),
-        updated_at: item.updated_at.to_rfc3339(),
-        last_attempt_at: item.last_attempt_at.map(|t| t.to_rfc3339()),
-        last_error: item.last_error,
-        timestamped_at: proof.timestamped_at.map(|t| t.to_rfc3339()),
-        due_date: due.map(|d| d.to_rfc3339()),
-        margin_seconds: proof.margin_seconds(),
-    }
+fn outbox_item_dtos(
+    database: &Database,
+    items: Vec<crate::models::OutboxItem>,
+) -> Vec<OutboxItemDto> {
+    // um único SELECT para todos os prazos (em vez de um por item)
+    let ids: Vec<i64> = items.iter().map(|i| i.assign_id).collect();
+    let dues = database.get_activity_due_dates(&ids).unwrap_or_default();
+    items
+        .into_iter()
+        .map(|item| {
+            let due = dues.get(&item.assign_id).copied();
+            let proof = SubmissionProof::from_outbox_item(&item).with_due_date(due);
+            OutboxItemDto {
+                id: item.id.unwrap_or(0),
+                assign_id: item.assign_id,
+                filename: item.filename,
+                file_hash: item.file_hash,
+                status: item.status.as_str().to_string(),
+                retry_count: item.retry_count,
+                has_rfc3161_token: item.rfc3161_token.is_some(),
+                created_at: item.created_at.to_rfc3339(),
+                updated_at: item.updated_at.to_rfc3339(),
+                last_attempt_at: item.last_attempt_at.map(|t| t.to_rfc3339()),
+                last_error: item.last_error,
+                timestamped_at: proof.timestamped_at.map(|t| t.to_rfc3339()),
+                due_date: due.map(|d| d.to_rfc3339()),
+                margin_seconds: proof.margin_seconds(),
+            }
+        })
+        .collect()
 }
 
 /// Itens ainda a enviar (pendentes ou com falha). Usado pelo celular e pelos contadores.
 pub fn outbox_items(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
     let items = database.get_pending_outbox_items().map_err(err)?;
-    Ok(items
-        .into_iter()
-        .map(|item| outbox_item_dto(database, item))
-        .collect())
+    Ok(outbox_item_dtos(database, items))
 }
 
 /// Fila completa, inclusive itens já entregues (linha do tempo do desktop).
 pub fn outbox_history(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
     let items = database.get_all_outbox_items().map_err(err)?;
-    Ok(items
-        .into_iter()
-        .map(|item| outbox_item_dto(database, item))
-        .collect())
+    Ok(outbox_item_dtos(database, items))
 }
 
 pub async fn enqueue_submission(
@@ -217,7 +218,7 @@ pub async fn sync_moodle(
     session: MoodleSession,
     cache_dir: Option<PathBuf>,
 ) -> Result<SyncSummaryDto, String> {
-    let before = sync_report::snapshot(database);
+    let before = sync_report::snapshot(database).ok();
     let result = crawler_for(database, session, cache_dir)?
         .sync_all()
         .await
@@ -228,8 +229,8 @@ pub async fn sync_moodle(
         activities_synced: result.activities_synced,
         resources_cached: result.resources_cached,
     };
-    let after = sync_report::snapshot(database);
-    sync_report::record_sync_report(database, &summary, &before, &after);
+    let after = sync_report::snapshot(database).ok();
+    sync_report::record_sync_report(database, &summary, before.as_ref(), after.as_ref());
     Ok(summary)
 }
 
