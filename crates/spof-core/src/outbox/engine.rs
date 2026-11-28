@@ -88,20 +88,22 @@ Nome do Arquivo:           {}
 Checksum SHA-256:          {}
 Registro de Conclusão:     {} (UTC)
 Carimbo de Tempo RFC 3161: {} (Tamanho: {} bytes)
-Carimbo emitido em:        {}
+Horário lido do token:     {}
 Prazo da Tarefa:           {}
 Folga em relação ao prazo: {}
-Status de Entrega:         {}
+Status na fila local:      {}
 ================================================================================
-Este relatório atesta que o arquivo com o hash acima foi congelado e selado
-antes do encerramento do prazo, independentemente de instabilidades no servidor.
+Este relatório registra o hash do arquivo e, quando presente, o token de carimbo
+de tempo RFC 3161 obtido da autoridade. O horário é apenas lido do token: a
+ASSINATURA NÃO É VERIFICADA por este aplicativo; valide o token com ferramenta
+própria (ex.: openssl ts -verify) antes de usá-lo como prova.
 ================================================================================"#,
             self.assign_id,
             self.filename,
             self.file_hash,
             self.queued_at.to_rfc3339(),
             if self.has_rfc3161_token {
-                "VÁLIDO / ASSINADO PELA AUTORIDADE TSA"
+                "TOKEN PRESENTE (assinatura não verificada)"
             } else {
                 "PENDENTE / SEM TOKEN EXTERNO"
             },
@@ -113,8 +115,14 @@ antes do encerramento do prazo, independentemente de instabilidades no servidor.
                 .map(|d| format!("{} (UTC)", d.to_rfc3339()))
                 .unwrap_or_else(|| "não sincronizado".to_string()),
             match self.margin_seconds() {
-                Some(m) if m >= 0 => format!("{} antes do prazo", format_margin(m)),
-                Some(m) => format!("{} DEPOIS do prazo", format_margin(m)),
+                Some(m) if m >= 0 => format!(
+                    "{} antes do prazo (horário não verificado)",
+                    format_margin(m)
+                ),
+                Some(m) => format!(
+                    "{} DEPOIS do prazo (horário não verificado)",
+                    format_margin(m)
+                ),
                 None => "indeterminada".to_string(),
             },
             self.status.as_str()
@@ -281,6 +289,9 @@ mod tests {
         );
         let report = proof.formatted_report();
         assert!(report.contains("2 dias e 13 h antes do prazo"));
+        assert!(report.contains("ASSINATURA NÃO É VERIFICADA"));
+        assert!(report.contains("TOKEN PRESENTE (assinatura não verificada)"));
+        assert!(!report.contains("VÁLIDO"));
         assert!(report.contains("2026-11-28T10:00:00+00:00 (UTC)"));
 
         // sem token: usa created_at

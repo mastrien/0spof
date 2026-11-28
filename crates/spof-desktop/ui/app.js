@@ -184,6 +184,9 @@ function switchTab(target) {
   if (focusForm) target = "outbox";
 
   currentTab = target;
+  document.querySelectorAll("[data-tab-action]").forEach((el) => {
+    el.style.display = el.getAttribute("data-tab-action") === target ? "" : "none";
+  });
   navItems.forEach((b) => b.classList.toggle("active", b.getAttribute("data-tab") === target));
   tabPanes.forEach((p) => p.classList.toggle("active", p.id === `tab-${target}`));
   updateHeading();
@@ -207,7 +210,22 @@ document.getElementById("link-outbox-all")?.addEventListener("click", () => swit
 // ---------------------------------------------------------------------------
 // Carga de dados
 // ---------------------------------------------------------------------------
-async function refreshData() {
+let lastRefreshAt = 0;
+let refreshInFlight = null;
+const FOCUS_REFRESH_MIN_MS = 60000;
+
+// Evita refreshes simultâneos (clique + foco) reaproveitando o que já está em andamento.
+function refreshData() {
+  if (!refreshInFlight) {
+    refreshInFlight = doRefreshData().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+async function doRefreshData() {
+  lastRefreshAt = Date.now();
   try {
     const status = await invoke("get_system_status");
     document.getElementById("metric-courses").innerText = status.active_courses_count;
@@ -266,7 +284,7 @@ async function refreshData() {
 }
 
 // Faixa de aviso: só relata o que o app sabe (sessão, falhas registradas na fila, falha de sync).
-// O backend não reenvia sozinho; as tentativas aparecem como "tentativas" por item.
+// O 0spof não envia nem reenvia ao Moodle sozinho: a entrega final é manual, pelo site.
 function renderConnectionBanner() {
   const banner = document.getElementById("connection-banner");
   if (!banner) return;
@@ -284,14 +302,14 @@ function renderConnectionBanner() {
     const latest = failed
       .filter((i) => i.last_attempt_at)
       .sort((a, b) => new Date(b.last_attempt_at) - new Date(a.last_attempt_at))[0];
-    title = `${failed.length} ${failed.length === 1 ? "envio falhou" : "envios falharam"}`;
+    title = `${failed.length} ${failed.length === 1 ? "item com falha registrada" : "itens com falha registrada"}`;
     text = latest
       ? `Última tentativa ${relativeTime(latest.last_attempt_at)}${latest.last_error ? `: ${latest.last_error}` : ""}.`
       : "Revise a fila de envio.";
     action = { label: "Ver fila", tab: "outbox" };
   } else if (!state.session.is_authenticated && open.length > 0) {
     title = "Sem sessão do Moodle";
-    text = `${open.length} ${open.length === 1 ? "entrega aguarda" : "entregas aguardam"} na fila. Conecte-se para continuar.`;
+    text = `${open.length} ${open.length === 1 ? "entrega registrada localmente aguarda" : "entregas registradas localmente aguardam"} envio manual pelo Moodle. Conectar atualiza prazos e materiais.`;
     action = { label: "Conectar", tab: "settings" };
   }
 
@@ -428,10 +446,10 @@ function groupKeyFor(row) {
 function rowChip(row) {
   const item = outboxItemForAssign(row.id);
   if (item) {
-    if (item.status === "delivered") return `<span class="chip ok">Enviado</span>`;
-    if (item.status === "failed") return `<span class="chip risk">Falha no envio</span>`;
-    if (item.status === "in_flight") return `<span class="chip warn">Enviando…</span>`;
-    return `<span class="chip info">Na fila</span>`;
+    if (item.status === "delivered") return `<span class="chip ok">Marcada como enviada</span>`;
+    if (item.status === "failed") return `<span class="chip risk">Falha registrada</span>`;
+    if (item.status === "in_flight") return `<span class="chip warn">Em envio</span>`;
+    return `<span class="chip info">Registrada</span>`;
   }
   if (row.is_submitted) return `<span class="chip ok">Entregue</span>`;
   if (row.type !== "assign") return `<span class="chip mut" title="Atividade respondida apenas no Moodle">Online</span>`;
@@ -554,8 +572,8 @@ function renderNextDelivery() {
   const item = outboxItemForAssign(next.id);
   const chips = [];
   if (item) {
-    chips.push(`${escapeHtml(item.filename)} anexado`);
-    if (item.has_rfc3161_token) chips.push("Selo RFC 3161 pronto");
+    chips.push(`${escapeHtml(item.filename)} registrado localmente`);
+    if (item.has_rfc3161_token) chips.push("Token RFC 3161 (não verificado)");
   } else if (next.activity_type === "assign") {
     chips.push("Nenhum arquivo preparado");
   } else {
@@ -612,23 +630,44 @@ function tickCountdown() {
 }
 setInterval(tickCountdown, 30000);
 
+// Arquivos de materiais (tipo "resource") sincronizados vs. realmente baixados.
+function offlineFileStats() {
+  let total = 0;
+  let downloaded = 0;
+  for (const a of state.activities.values()) {
+    if (a.activity_type === "resource") {
+      total++;
+      if (a.local_file_path) downloaded++;
+    }
+  }
+  return { total, downloaded, missing: total - downloaded };
+}
+
 function renderProtect() {
   const card = document.getElementById("protect-card");
   const title = document.getElementById("protect-title");
   const sub = document.getElementById("protect-sub");
   const failed = state.outbox.filter((i) => i.status === "failed").length;
+  const files = offlineFileStats();
   let tone = "ok";
   if (cachedCourses.length === 0) {
     tone = "empty";
     title.innerText = "Nada salvo ainda";
-    sub.innerText = "Sincronize o Moodle para ter acesso offline.";
+    sub.innerText = "Sincronize o Moodle para guardar o material neste computador.";
   } else if (failed > 0) {
     tone = "warn";
     title.innerText = "Atenção na fila de envio";
-    sub.innerText = `${failed} ${failed === 1 ? "envio falhou" : "envios falharam"}. Revise na fila.`;
+    sub.innerText = `${failed} ${failed === 1 ? "item com falha registrada" : "itens com falha registrada"}. Revise na fila.`;
+  } else if (files.missing > 0) {
+    tone = "warn";
+    title.innerText = "Material parcialmente salvo";
+    sub.innerText = `${files.missing} de ${files.total} ${files.total === 1 ? "arquivo" : "arquivos"} ainda só no Moodle.`;
   } else {
-    title.innerText = "Tudo protegido";
-    sub.innerText = "Você pode ficar offline agora.";
+    title.innerText = "Material salvo offline";
+    sub.innerText =
+      files.total > 0
+        ? `${files.downloaded} ${files.downloaded === 1 ? "arquivo baixado" : "arquivos baixados"} neste computador.`
+        : "Seções e enunciados salvos neste computador.";
   }
   card.setAttribute("data-tone", tone);
 
@@ -686,6 +725,7 @@ function formatMargin(totalSecs) {
 }
 
 // Etapas da linha do tempo, com os horários reais expostos pelo backend.
+// O 0spof registra e sela o arquivo localmente; o envio ao Moodle é manual e não é rastreado aqui.
 function outboxSteps(item) {
   const delivered = item.status === "delivered";
   const failed = item.status === "failed";
@@ -694,32 +734,39 @@ function outboxSteps(item) {
   const when = (iso) => (iso ? formatDate(iso) : "");
   const join = (...parts) => parts.filter(Boolean).join(" · ");
   return [
-    { state: "done", title: "Arquivo registrado", sub: join(when(item.created_at), "hash SHA-256 guardado") },
+    { state: "done", title: "Registrado localmente", sub: join(when(item.created_at), "hash SHA-256 guardado") },
     item.has_rfc3161_token
-      ? { state: "done", title: "Selo RFC 3161 emitido", sub: join(when(item.timestamped_at || item.created_at), "TSA") }
-      : { state: "todo", title: "Sem selo de tempo", sub: "Não solicitado ou autoridade indisponível" },
+      ? {
+          state: "done",
+          title: "Token RFC 3161 obtido",
+          sub: join(
+            item.timestamped_at ? `horário lido do token: ${when(item.timestamped_at)}` : "",
+            "assinatura não verificada"
+          ),
+        }
+      : { state: "todo", title: "Sem token de carimbo", sub: "Não solicitado ou autoridade indisponível" },
     delivered
-      ? { state: "done", title: "Enviado ao Moodle", sub: when(item.last_attempt_at) }
+      ? { state: "done", title: "Marcado como enviado", sub: when(item.last_attempt_at) }
       : failed
         ? {
             state: "fail",
-            title: "Falha no envio",
+            title: "Falha registrada",
             sub: join(`${tries} ${tries === 1 ? "tentativa" : "tentativas"}`, when(item.last_attempt_at), item.last_error),
           }
         : inFlight
-          ? { state: "active", title: "Enviando ao Moodle", sub: "Transferência em andamento" }
-          : { state: "active", title: "Enviando ao Moodle", sub: "Aguardando conexão" },
+          ? { state: "active", title: "Em envio", sub: "" }
+          : { state: "active", title: "Aguardando envio manual", sub: "Entregue o arquivo pelo site do Moodle" },
     delivered
-      ? { state: "done", title: "Confirmado", sub: when(item.updated_at) }
-      : { state: "todo", title: "Confirmado", sub: "" },
+      ? { state: "done", title: "Confirmação", sub: when(item.updated_at) }
+      : { state: "todo", title: "Confirmação do Moodle", sub: "Não acompanhada pelo 0spof" },
   ];
 }
 
 function marginText(item) {
   if (item.margin_seconds === null || item.margin_seconds === undefined) return "";
   return item.margin_seconds >= 0
-    ? `Selado antes do prazo · ${formatMargin(item.margin_seconds)} de folga`
-    : `Selado ${formatMargin(item.margin_seconds)} depois do prazo`;
+    ? `Registrado ${formatMargin(item.margin_seconds)} antes do prazo (horário do token, não verificado)`
+    : `Registrado ${formatMargin(item.margin_seconds)} depois do prazo (horário do token, não verificado)`;
 }
 
 function outboxStatusText(item) {
@@ -728,15 +775,15 @@ function outboxStatusText(item) {
     const n = item.retry_count || 0;
     return `Falha no envio · ${n} ${n === 1 ? "tentativa" : "tentativas"}`;
   }
-  if (item.status === "in_flight") return "Enviando ao Moodle…";
-  return "Aguardando conexão com o Moodle";
+  if (item.status === "in_flight") return "Em envio";
+  return "Registrado localmente · aguardando envio manual";
 }
 
 function outboxChip(item) {
-  if (item.status === "delivered") return `<span class="chip ok">Confirmado pelo Moodle</span>`;
-  if (item.status === "failed") return `<span class="chip risk">Falhou</span>`;
-  if (item.status === "in_flight") return `<span class="chip warn">Enviando…</span>`;
-  return `<span class="chip info">${item.has_rfc3161_token ? "Selo pronto · aguardando rede" : "Aguardando rede"}</span>`;
+  if (item.status === "delivered") return `<span class="chip ok">Marcado como enviado</span>`;
+  if (item.status === "failed") return `<span class="chip risk">Falha registrada</span>`;
+  if (item.status === "in_flight") return `<span class="chip warn">Em envio</span>`;
+  return `<span class="chip info">${item.has_rfc3161_token ? "Registrado · token RFC 3161" : "Registrado localmente"}</span>`;
 }
 
 function renderMiniOutbox() {
@@ -1072,6 +1119,22 @@ async function openCourseDetail(courseId) {
       return;
     }
 
+    const offlineChip = document.getElementById("course-detail-offline");
+    if (offlineChip) {
+      const files = sections.flatMap((x) => x.activities || []).filter((a) => a.activity_type === "resource");
+      const missing = files.filter((a) => !a.local_file_path).length;
+      offlineChip.style.display = "inline-flex";
+      if (files.length === 0) {
+        offlineChip.style.display = "none";
+      } else if (missing === 0) {
+        offlineChip.className = "chip ok";
+        offlineChip.innerText = "Disponível offline";
+      } else {
+        offlineChip.className = "chip warn";
+        offlineChip.innerText = `${missing} ${missing === 1 ? "arquivo só online" : "arquivos só online"}`;
+      }
+    }
+
     const totalActivities = sections.reduce((n, s) => n + (s.activities ? s.activities.length : 0), 0);
     if (tocFoot) tocFoot.innerText = `${sections.length} seções · ${totalActivities} atividades`;
 
@@ -1113,7 +1176,7 @@ async function openCourseDetail(courseId) {
             <p class="eyebrow">Tarefa · vence ${escapeHtml(formatDueLong(upcoming.due_date))}</p>
             <h2>${escapeHtml(upcoming.title)}</h2>
           </div>
-          ${qItem ? `<span class="chip info">Na fila</span>` : ""}
+          ${qItem ? `<span class="chip info">Registrada</span>` : ""}
           <button class="btn btn-primary btn-queue-assign" data-assign-id="${upcoming.id}" type="button">${qItem ? "Nova versão" : "Preparar entrega"}</button>
         </section>`;
     }
@@ -1193,14 +1256,14 @@ async function openCourseDetail(courseId) {
                       if (act.is_submitted) {
                         badgeHtml = `<span class="chip ok">Entregue</span>`;
                       } else if (qItem) {
-                        badgeHtml = `<span class="chip info">Na fila</span>`;
+                        badgeHtml = `<span class="chip info">Registrada</span>`;
                       } else {
                         badgeHtml = `<span class="chip warn">Pendente</span>`;
                       }
                     } else if (hasLocalFile) {
-                      badgeHtml = `<span class="chip ok">Offline</span>`;
+                      badgeHtml = `<span class="chip ok">Disponível offline</span>`;
                     } else {
-                      badgeHtml = `<span class="chip mut">${getActivityBadge(act.activity_type)}</span>`;
+                      badgeHtml = `<span class="chip mut" title="Ainda não baixado ou respondido apenas no Moodle">Só online</span>`;
                     }
 
                     const dueDateHtml =
@@ -1419,7 +1482,7 @@ function renderOutbox() {
           </div>
           <div>
             <div class="fact-label">Selo de tempo</div>
-            <div class="fact-value">${sel.has_rfc3161_token ? `Carimbo RFC 3161${sel.timestamped_at ? ` emitido em ${escapeHtml(formatDate(sel.timestamped_at))}` : " anexado ao arquivo"}` : "Nenhum carimbo anexado"}</div>
+            <div class="fact-value">${sel.has_rfc3161_token ? `Token RFC 3161${sel.timestamped_at ? ` · horário lido do token: ${escapeHtml(formatDate(sel.timestamped_at))}` : ""}<br><small>assinatura não verificada pelo 0spof</small>` : "Nenhum token anexado"}</div>
           </div>
           ${sel.due_date ? `<div>
             <div class="fact-label">Prazo da tarefa</div>
@@ -1769,7 +1832,8 @@ if (window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.
 window.addEventListener("focus", async () => {
   if (btnAutoLogin) btnAutoLogin.disabled = false;
   if (autoLoginSpinner) autoLoginSpinner.style.display = "none";
-  await refreshData();
+  // o refresh percorre todas as disciplinas: no foco só repete depois de um minuto
+  if (Date.now() - lastRefreshAt > FOCUS_REFRESH_MIN_MS) await refreshData();
 });
 
 // ---------------------------------------------------------------------------

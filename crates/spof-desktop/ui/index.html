@@ -69,6 +69,10 @@
             <kbd>Ctrl K</kbd>
             <div id="global-search-results" class="search-results" role="listbox" hidden></div>
           </div>
+          <button id="btn-import-course" class="btn btn-secondary" type="button" data-tab-action="courses" style="display:none;" title="Importar disciplina (.zip) ou backup (.json)">
+            <svg class="btn-svg" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5M12 3v12"/></svg>
+            <span>Importar pacote (.zip)</span>
+          </button>
           <button id="btn-refresh" class="btn btn-secondary btn-icon" title="Atualizar dados locais" aria-label="Atualizar dados locais">
             <svg class="btn-svg" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.5 0 4.9 1 6.7 2.7L21 8"/><path d="M21 3v5h-5"/></svg>
           </button>
@@ -114,14 +118,14 @@
                 <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
               </span>
               <div>
-                <h2 id="protect-title">Tudo protegido</h2>
-                <p id="protect-sub">Você pode ficar offline agora.</p>
+                <h2 id="protect-title">Material salvo</h2>
+                <p id="protect-sub">Verificando material salvo…</p>
               </div>
             </div>
             <dl class="protect-list" aria-label="Resumo do sistema">
               <div><dt>Disciplinas salvas</dt><dd><b id="metric-courses">0</b> <span id="metric-muted-courses" class="metric-subtle-pill" style="display:none;">0 silenciados</span></dd></div>
               <div><dt>Prazos ativos</dt><dd><b id="metric-deadlines">0</b></dd></div>
-              <div><dt>Aguardando entrega</dt><dd><b id="metric-outbox">0</b></dd></div>
+              <div><dt>Entregas registradas</dt><dd><b id="metric-outbox">0</b></dd></div>
               <div><dt>Sessão Moodle</dt><dd><b id="protect-session">—</b></dd></div>
               <div><dt>Último sync</dt><dd><b id="protect-lastsync">—</b></dd></div>
               <div><dt>Dados locais</dt><dd><b id="protect-storage" title="Banco + arquivos baixados">—</b></dd></div>
@@ -185,10 +189,6 @@
                 <option value="synced">Sincronizada mais recentemente</option>
               </select>
             </label>
-            <button id="btn-import-course" class="btn btn-secondary" type="button" title="Importar disciplina (.zip) ou backup (.json)">
-              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5M12 3v12"/></svg>
-              <span>Importar (.zip)</span>
-            </button>
           </div>
           <div id="courses-list" class="item-list courses-grid">Carregando disciplinas…</div>
         </div>
@@ -202,6 +202,7 @@
               <div class="detail-title-row">
                 <h2 id="course-detail-title">Nome da Disciplina</h2>
                 <span class="chip info" id="course-detail-short">DISCIPLINA</span>
+                <span class="chip ok" id="course-detail-offline" style="display:none;">Disponível offline</span>
               </div>
             </div>
             <div class="detail-actions">
@@ -241,7 +242,7 @@
             <div>
               <p class="eyebrow">Nova entrega</p>
               <h2>Enfileirar submissão</h2>
-              <p class="section-description">O arquivo é registrado localmente e enviado quando houver conexão.</p>
+              <p class="section-description">O 0spof registra e sela o arquivo neste computador. O envio ao Moodle continua sendo feito por você, pelo site.</p>
             </div>
             <form id="form-enqueue" class="submission-form">
               <div class="form-group">
