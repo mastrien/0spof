@@ -8,7 +8,7 @@ pub mod sync_commands;
 
 pub use commands::AppState;
 use spof_core::storage::Database;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 fn try_load_dotenv_session(state: &AppState) {
@@ -46,7 +46,7 @@ pub fn run() {
     {
         if std::env::var("WEBVIEW2_USER_DATA_FOLDER").is_err() {
             if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
-                let data_dir = PathBuf::from(local_appdata)
+                let data_dir = std::path::PathBuf::from(local_appdata)
                     .join("0spof")
                     .join("webview_data");
                 let _ = std::fs::create_dir_all(&data_dir);
@@ -55,30 +55,7 @@ pub fn run() {
         }
     }
 
-    let db_path = if let Ok(custom) = std::env::var("SPOF_DB_PATH") {
-        PathBuf::from(custom)
-    } else if Path::new("0spof.db").exists() {
-        PathBuf::from("0spof.db")
-    } else if Path::new("../../0spof.db").exists() {
-        PathBuf::from("../../0spof.db")
-    } else if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
-        let app_dir = PathBuf::from(local_appdata).join("0spof");
-        let _ = std::fs::create_dir_all(&app_dir);
-        app_dir.join("0spof.db")
-    } else if let Some(xdg_data) = std::env::var_os("XDG_DATA_HOME") {
-        let app_dir = PathBuf::from(xdg_data).join("0spof");
-        let _ = std::fs::create_dir_all(&app_dir);
-        app_dir.join("0spof.db")
-    } else if let Some(home) = std::env::var_os("HOME") {
-        let app_dir = PathBuf::from(home)
-            .join(".local")
-            .join("share")
-            .join("0spof");
-        let _ = std::fs::create_dir_all(&app_dir);
-        app_dir.join("0spof.db")
-    } else {
-        PathBuf::from("0spof.db")
-    };
+    let db_path = spof_core::paths::resolve_db_path_and_prepare();
 
     let db =
         Database::open(&db_path).expect("Failed to initialize SQLite database for 0spof desktop");

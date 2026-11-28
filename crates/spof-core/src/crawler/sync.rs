@@ -18,13 +18,7 @@ pub struct SyncSummary {
 }
 
 pub fn default_cache_dir() -> PathBuf {
-    if let Ok(custom) = std::env::var("SPOF_CACHE_DIR") {
-        return PathBuf::from(custom);
-    }
-    if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
-        return PathBuf::from(local_appdata).join("0spof").join("resources");
-    }
-    PathBuf::from("0spof_cache")
+    crate::paths::resolve_cache_dir(|k| std::env::var_os(k))
 }
 
 /// Orquestrador de raspagem e sincronização offline de cursos, atividades e recursos.
