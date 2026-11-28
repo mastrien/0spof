@@ -68,6 +68,7 @@ const state = {
   session: { is_authenticated: false, base_url: null },
   // id da atividade -> atividade + dados da disciplina (montado a partir de get_course_details)
   activities: new Map(),
+  syncError: null,
   syncReport: null,
   storage: null,
   deadlineView: "pending",
@@ -255,12 +256,55 @@ async function refreshData() {
     renderCourses();
     renderDashboard();
     renderOutbox();
+    renderConnectionBanner();
     renderSessionDetail();
     populateCourseSelect();
     updateHeading();
   } catch (err) {
     console.error("Erro ao carregar status:", err);
   }
+}
+
+// Faixa de aviso: só relata o que o app sabe (sessão, falhas registradas na fila, falha de sync).
+// O backend não reenvia sozinho; as tentativas aparecem como "tentativas" por item.
+function renderConnectionBanner() {
+  const banner = document.getElementById("connection-banner");
+  if (!banner) return;
+  const open = state.outbox.filter((i) => i.status !== "delivered");
+  const failed = open.filter((i) => i.status === "failed");
+  let title = "";
+  let text = "";
+  let action = null;
+
+  if (state.syncError) {
+    title = "Falha na última sincronização";
+    text = String(state.syncError);
+    action = { label: "Conexão e dados", tab: "settings" };
+  } else if (failed.length > 0) {
+    const latest = failed
+      .filter((i) => i.last_attempt_at)
+      .sort((a, b) => new Date(b.last_attempt_at) - new Date(a.last_attempt_at))[0];
+    title = `${failed.length} ${failed.length === 1 ? "envio falhou" : "envios falharam"}`;
+    text = latest
+      ? `Última tentativa ${relativeTime(latest.last_attempt_at)}${latest.last_error ? `: ${latest.last_error}` : ""}.`
+      : "Revise a fila de envio.";
+    action = { label: "Ver fila", tab: "outbox" };
+  } else if (!state.session.is_authenticated && open.length > 0) {
+    title = "Sem sessão do Moodle";
+    text = `${open.length} ${open.length === 1 ? "entrega aguarda" : "entregas aguardam"} na fila. Conecte-se para continuar.`;
+    action = { label: "Conectar", tab: "settings" };
+  }
+
+  if (!title) {
+    banner.style.display = "none";
+    return;
+  }
+  document.getElementById("connection-banner-title").innerText = title;
+  document.getElementById("connection-banner-text").innerText = text;
+  const btn = document.getElementById("btn-connection-action");
+  btn.innerText = action.label;
+  btn.onclick = () => switchTab(action.tab);
+  banner.style.display = "flex";
 }
 
 function renderSessionDetail() {
@@ -1609,6 +1653,7 @@ btnSync.addEventListener("click", async () => {
 
   try {
     const summary = await invoke("sync_moodle");
+    state.syncError = null;
     if (summary.courses_synced === 0) {
       alert("Sincronização concluída, mas nenhum curso foi encontrado. Verifique seu login no Moodle.");
     } else {
@@ -1618,6 +1663,8 @@ btnSync.addEventListener("click", async () => {
     }
     await refreshData();
   } catch (err) {
+    state.syncError = err;
+    renderConnectionBanner();
     alert("Erro na sincronização: " + err);
   } finally {
     btnSync.disabled = false;

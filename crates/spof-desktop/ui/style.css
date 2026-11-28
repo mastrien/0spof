@@ -2175,6 +2175,35 @@ h3 {
   height: 32px;
 }
 
+.connection-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  border: 1px solid #f0d9a8;
+  border-radius: var(--radius-control);
+  background: #fffbf1;
+  color: var(--warn-ink);
+  font-size: 13px;
+}
+
+.connection-banner-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.connection-banner-text span {
+  margin-left: 6px;
+  color: var(--ink-2);
+}
+
+.connection-banner .btn {
+  height: 32px;
+  flex: none;
+}
+
 /* ------------------------------------------------------------------ Modais */
 
 .modal {
