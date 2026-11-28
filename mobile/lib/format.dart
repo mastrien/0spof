@@ -35,8 +35,8 @@ int daysUntil(DateTime d, {DateTime? now}) {
   return dayOf(d).difference(dayOf(n)).inDays;
 }
 
-String fmtDue(DateTime d) {
-  final days = daysUntil(d);
+String fmtDue(DateTime d, {DateTime? now}) {
+  final days = daysUntil(d, now: now);
   final hm = '${_two(d.hour)}:${_two(d.minute)}';
   final date = '${_two(d.day)}/${_two(d.month)}';
   final rel = days == 0
@@ -82,8 +82,8 @@ String fmtAgo(DateTime t, {DateTime? now}) {
 }
 
 /// Texto curto do prazo para chips de disciplina ("Hoje", "Amanhã", "5 dias").
-String fmtDaysChip(DateTime due) {
-  final days = daysUntil(due);
+String fmtDaysChip(DateTime due, {DateTime? now}) {
+  final days = daysUntil(due, now: now);
   if (days < 0) return 'Atrasado';
   if (days == 0) return 'Hoje';
   if (days == 1) return 'Amanhã';

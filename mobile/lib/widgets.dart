@@ -53,7 +53,7 @@ class ScreenHeader extends StatelessWidget {
                 ],
               ),
             ),
-            if (trailing != null) trailing!,
+            ?trailing,
           ],
         ),
       );
@@ -96,14 +96,14 @@ class StatusChip extends StatelessWidget {
     final p = Pal.of(context);
     final fg = p.fgOf(tone);
     return Container(
-      height: 24,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      constraints: const BoxConstraints(minHeight: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
       decoration: BoxDecoration(color: p.bgOf(tone), borderRadius: BorderRadius.circular(999)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[Icon(icon, size: 14, color: fg), const SizedBox(width: 4)],
-          Text(text, maxLines: 1, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg)),
+          Flexible(child: Text(text, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg))),
         ],
       ),
     );
@@ -254,16 +254,19 @@ class GroupLabel extends StatelessWidget {
 class FilterPill extends StatelessWidget {
   final String label;
   final bool selected;
-  final VoidCallback onTap;
+  /// Nulo = pílula desabilitada.
+  final VoidCallback? onTap;
   const FilterPill({super.key, required this.label, required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final p = Pal.of(context);
     final bg = selected ? p.infoBg : p.surface;
-    final fg = selected ? p.infoFg : p.ink;
+    final enabled = onTap != null;
+    final fg = !enabled ? p.muted : (selected ? p.infoFg : p.ink);
     return Semantics(
       button: true,
+      enabled: enabled,
       selected: selected,
       label: label,
       excludeSemantics: true,
@@ -275,7 +278,7 @@ class FilterPill extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 44),
           child: Center(
             child: Container(
-              height: 36,
+              constraints: const BoxConstraints(minHeight: 36),
               padding: const EdgeInsets.symmetric(horizontal: 14),
               alignment: Alignment.center,
               decoration: BoxDecoration(

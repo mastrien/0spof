@@ -8,6 +8,35 @@ import 'store.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
+/// Estado de cada etapa do comprovante.
+enum StageState { pending, done, active, error }
+
+const outboxStepNames = ['Registrado', 'Selo', 'Enviando', 'Confirmado'];
+
+/// Mapeia o status do backend (`pending`, `in_flight`, `delivered`, `failed`)
+/// e a presença do selo RFC 3161 nas 4 etapas [Registrado, Selo, Enviando, Confirmado].
+List<StageState> outboxSteps(String status, bool hasToken) {
+  const d = StageState.done, a = StageState.active, n = StageState.pending, e = StageState.error;
+  final selo = hasToken ? d : n;
+  return switch (status) {
+    'delivered' => [d, d, d, d],
+    'failed' => [d, selo, e, n],
+    'in_flight' => [d, selo, a, n],
+    // pendente: com selo, a próxima etapa é o envio (ainda não iniciado); sem selo, o selo é a etapa atual
+    _ => hasToken ? [d, d, n, n] : [d, a, n, n],
+  };
+}
+
+/// Rótulo da etapa atual, para leitores de tela.
+String outboxStepLabel(List<StageState> s) {
+  if (s.every((x) => x == StageState.done)) return 'Confirmado';
+  final err = s.indexOf(StageState.error);
+  if (err >= 0) return 'Falha em ${outboxStepNames[err]}';
+  final act = s.indexOf(StageState.active);
+  if (act >= 0) return outboxStepNames[act];
+  return 'Aguardando envio';
+}
+
 class OutboxPage extends StatelessWidget {
   final Store store;
   const OutboxPage({super.key, required this.store});
@@ -51,8 +80,6 @@ class _OutboxCard extends StatelessWidget {
   final Deadline? deadline;
   const _OutboxCard({required this.store, required this.o, required this.deadline});
 
-  static const _steps = ['Registrado', 'Selo', 'Enviando', 'Confirmado'];
-
   @override
   Widget build(BuildContext context) {
     final p = Pal.of(context);
@@ -68,6 +95,9 @@ class _OutboxCard extends StatelessWidget {
     } else if (failed) {
       chipText = 'Falhou';
       tone = Tone.err;
+    } else if (o.status == 'in_flight') {
+      chipText = 'Enviando';
+      tone = Tone.info;
     } else if (o.hasToken) {
       chipText = 'Selo pronto';
       tone = Tone.info;
@@ -81,11 +111,8 @@ class _OutboxCard extends StatelessWidget {
       if (!delivered && due != null) 'vence ${fmtShortDate(due)}',
     ].join(' · ');
 
-    // 0 = pendente, 1 = concluída, 2 = em andamento
-    final states = delivered
-        ? [1, 1, 1, 1]
-        : [1, o.hasToken ? 1 : 2, o.hasToken ? 2 : 0, 0];
-    final stepLabel = delivered ? 'Confirmado' : _steps[states.indexOf(2).clamp(0, 3).toInt()];
+    final states = outboxSteps(o.status, o.hasToken);
+    final stepLabel = outboxStepLabel(states);
     final highlight = !delivered && !failed && o.hasToken;
 
     final header = Row(
@@ -133,9 +160,10 @@ class _OutboxCard extends StatelessWidget {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(2),
                             color: switch (states[i]) {
-                              1 => green,
-                              2 => Theme.of(context).colorScheme.primary,
-                              _ => p.fieldBorder,
+                              StageState.done => green,
+                              StageState.active => Theme.of(context).colorScheme.primary,
+                              StageState.error => p.errFg,
+                              StageState.pending => p.fieldBorder,
                             },
                           ),
                         ),
@@ -147,7 +175,7 @@ class _OutboxCard extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    for (final l in _steps) Text(l, style: TextStyle(fontSize: 11, color: p.muted)),
+                    for (final l in outboxStepNames) Text(l, style: TextStyle(fontSize: 11, color: p.muted)),
                   ],
                 ),
               ],

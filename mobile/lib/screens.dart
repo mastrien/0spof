@@ -120,12 +120,14 @@ class _HomeShellState extends State<HomeShell> {
                 icon: Badge(
                   isLabelVisible: pending > 0,
                   backgroundColor: amber,
+                  textColor: Colors.white,
                   label: Text('$pending'),
                   child: const Icon(Icons.send_outlined),
                 ),
                 selectedIcon: Badge(
                   isLabelVisible: pending > 0,
                   backgroundColor: amber,
+                  textColor: Colors.white,
                   label: Text('$pending'),
                   child: const Icon(Icons.send),
                 ),
@@ -152,6 +154,65 @@ OutboxItem? queuedFor(Store store, int assignId) {
   return null;
 }
 
+/// Prazos agrupados para a tela Prazos.
+class DeadlineGroups {
+  final List<Deadline> late = [], week = [], later = [], undated = [], done = [];
+}
+
+/// Atrasadas (vencidas e não enviadas), esta semana (hoje até 7 dias à frente),
+/// depois, sem data e já enviadas cujo prazo passou.
+DeadlineGroups groupDeadlines(List<Deadline> items, DateTime now) {
+  final g = DeadlineGroups();
+  for (final d in items) {
+    final due = d.due;
+    if (due == null) {
+      g.undated.add(d);
+    } else if (due.isBefore(now)) {
+      (d.submitted ? g.done : g.late).add(d);
+    } else if (daysUntil(due, now: now) <= 7) {
+      g.week.add(d);
+    } else {
+      g.later.add(d);
+    }
+  }
+  return g;
+}
+
+/// Texto, tom e ícone da faixa de status de Prazos.
+({String text, Tone tone, IconData icon}) statusBannerFor({
+  required List<OutboxItem> outbox,
+  required String? pcSyncError,
+  required DateTime? pcLastSync,
+  DateTime? now,
+}) {
+  final open = outbox.where((o) => o.status != 'delivered');
+  final failed = open.where((o) => o.status == 'failed').length;
+  final unprotected = open.where((o) => o.status != 'failed' && !o.hasToken).length;
+  final syncText = pcLastSync == null ? '' : ' · sync ${fmtAgo(pcLastSync, now: now)}';
+  const warn = Icons.warning_amber_rounded;
+  if (pcSyncError != null) {
+    return (text: 'Falha ao sincronizar com o PC', tone: Tone.warn, icon: warn);
+  }
+  if (failed > 0) {
+    return (
+      text: '$failed ${failed == 1 ? 'entrega com falha' : 'entregas com falha'}$syncText',
+      tone: Tone.warn,
+      icon: warn
+    );
+  }
+  if (unprotected > 0) {
+    return (
+      text: '$unprotected ${unprotected == 1 ? 'entrega sem carimbo' : 'entregas sem carimbo'}$syncText',
+      tone: Tone.warn,
+      icon: warn
+    );
+  }
+  if (pcLastSync == null) {
+    return (text: 'Ainda sem sincronização', tone: Tone.warn, icon: warn);
+  }
+  return (text: 'Tudo protegido$syncText', tone: Tone.ok, icon: Icons.verified_user_outlined);
+}
+
 class DeadlinesPage extends StatelessWidget {
   final Store store;
   const DeadlinesPage({super.key, required this.store});
@@ -176,20 +237,7 @@ class DeadlinesPage extends StatelessWidget {
         return a.due!.compareTo(b.due!);
       });
     final next = _next(items, now);
-
-    final late = <Deadline>[], week = <Deadline>[], later = <Deadline>[], undated = <Deadline>[];
-    for (final d in items) {
-      final due = d.due;
-      if (due == null) {
-        undated.add(d);
-      } else if (due.isBefore(now) && !d.submitted) {
-        late.add(d);
-      } else if (daysUntil(due, now: now) <= 7) {
-        week.add(d);
-      } else {
-        later.add(d);
-      }
-    }
+    final g = groupDeadlines(items, now);
 
     final children = <Widget>[
       ScreenHeader(
@@ -219,10 +267,11 @@ class DeadlinesPage extends StatelessWidget {
         children.add(dividedCard(context, [for (final d in list) _DeadlineRow(store: store, d: d)]));
       }
 
-      group('Atrasadas', late);
-      group('Esta semana', week);
-      group('Depois', later);
-      group('Sem data', undated);
+      group('Atrasadas', g.late);
+      group('Esta semana', g.week);
+      group('Depois', g.later);
+      group('Sem data', g.undated);
+      group('Enviadas', g.done);
     }
     return refreshableList(store, children);
   }
@@ -234,31 +283,18 @@ class _StatusBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final unprotected = store.outbox.where((o) => o.status != 'delivered' && !o.hasToken).length;
     final pending = store.outbox.where((o) => o.status != 'delivered').length;
-    final syncText = store.pcLastSync == null ? '' : ' · sync ${fmtAgo(store.pcLastSync!)}';
-    final String text;
-    final Tone tone;
-    final IconData icon;
-    if (store.pcSyncError != null) {
-      text = 'Falha ao sincronizar com o PC';
-      tone = Tone.warn;
-      icon = Icons.warning_amber_rounded;
-    } else if (unprotected > 0) {
-      text = '$unprotected ${unprotected == 1 ? 'entrega sem carimbo' : 'entregas sem carimbo'}$syncText';
-      tone = Tone.warn;
-      icon = Icons.warning_amber_rounded;
-    } else {
-      text = 'Tudo protegido$syncText';
-      tone = Tone.ok;
-      icon = Icons.verified_user_outlined;
-    }
+    final b = statusBannerFor(
+      outbox: store.outbox,
+      pcSyncError: store.pcSyncError,
+      pcLastSync: store.pcLastSync,
+    );
     return InfoBanner(
-      tone: tone,
-      icon: icon,
+      tone: b.tone,
+      icon: b.icon,
       child: Row(
         children: [
-          Expanded(child: Text(text)),
+          Expanded(child: Text(b.text)),
           if (pending > 0) Text('$pending na fila', style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
       ),
@@ -272,8 +308,8 @@ class _HeroChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        height: 24,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        constraints: const BoxConstraints(minHeight: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
         alignment: Alignment.center,
         decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(999)),
         child: Text(text, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
@@ -412,7 +448,7 @@ class _DeadlineRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: p.ink)),
                   Text(
-                    [typeLabel(d.type), if (hm != null) hm].join(' · '),
+                    [typeLabel(d.type), ?hm].join(' · '),
                     style: TextStyle(fontSize: 12, color: p.muted),
                   ),
                 ],
