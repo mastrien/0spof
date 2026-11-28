@@ -1,8 +1,56 @@
 use crate::commands::{handle_save_session, AppState};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
 
 pub use spof_core::auth::is_authenticated_moodle_url;
+use spof_core::auth::should_capture;
+
+const POPUP_LABEL: &str = "moodle_login_popup";
+
+/// Evita capturas simultâneas: `PageLoadEvent::Finished` pode disparar várias
+/// vezes (redirecionamentos, iframes) antes de o popup fechar.
+static CAPTURING: AtomicBool = AtomicBool::new(false);
+
+struct CaptureGuard;
+
+impl CaptureGuard {
+    fn acquire() -> Option<Self> {
+        CAPTURING
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()
+            .map(|_| CaptureGuard)
+    }
+}
+
+impl Drop for CaptureGuard {
+    fn drop(&mut self) {
+        CAPTURING.store(false, Ordering::Release);
+    }
+}
+
+/// Salva a sessão; só em caso de sucesso avisa a UI e fecha o popup. Em erro
+/// registra em stderr (sem o valor do cookie) e mantém o popup aberto para
+/// nova tentativa.
+fn save_and_finish(
+    win: &tauri::WebviewWindow,
+    app: &tauri::AppHandle,
+    state: &AppState,
+    base_url: &str,
+    cookie_value: String,
+) -> bool {
+    match handle_save_session(state, base_url.to_string(), cookie_value) {
+        Ok(_) => {
+            let _ = app.emit("session_connected", ());
+            let _ = win.close();
+            true
+        }
+        Err(e) => {
+            eprintln!("0spof: falha ao salvar a sessão capturada: {e}");
+            false
+        }
+    }
+}
 
 pub fn handle_open_moodle_login_window(
     app: tauri::AppHandle,
@@ -20,7 +68,7 @@ pub fn handle_open_moodle_login_window(
     let clean_base = base_url.trim().trim_end_matches('/').to_string();
     let login_url = format!("{}/login/index.php", clean_base);
 
-    if let Some(existing) = app.get_webview_window("moodle_login_popup") {
+    if let Some(existing) = app.get_webview_window(POPUP_LABEL) {
         let _ = existing.set_focus();
         return Ok(());
     }
@@ -35,7 +83,7 @@ pub fn handle_open_moodle_login_window(
 
     let _window = tauri::WebviewWindowBuilder::new(
         &app,
-        "moodle_login_popup",
+        POPUP_LABEL,
         tauri::WebviewUrl::External(parsed_url),
     )
     .title("Conexão Institucional - Moodle / SUAP")
@@ -43,15 +91,24 @@ pub fn handle_open_moodle_login_window(
     .center()
     .resizable(true)
     .on_page_load(move |win, payload| {
-        let url_str = payload.url().as_str();
-        if payload.event() == tauri::webview::PageLoadEvent::Finished
-            && is_authenticated_moodle_url(url_str)
-        {
+        let finished = payload.event() == tauri::webview::PageLoadEvent::Finished;
+        if should_capture(&clean_base_clone, payload.url().as_str(), finished) {
             let win_clone = win.clone();
             let app_clone = app_clone.clone();
             let state_clone = state_clone.clone();
             let clean_base_clone = clean_base_clone.clone();
-            tauri::async_runtime::spawn(async move {
+            // A leitura de cookies bloqueia até a thread principal responder;
+            // por isso roda numa thread de bloqueio, nunca no async runtime.
+            tauri::async_runtime::spawn_blocking(move || {
+                let Some(_guard) = CaptureGuard::acquire() else {
+                    return;
+                };
+                // O popup pode já ter sido fechado por um Finished anterior:
+                // ler cookies de uma janela destruída causa panic no wry.
+                if app_clone.get_webview_window(POPUP_LABEL).is_none() {
+                    return;
+                }
+
                 #[cfg(windows)]
                 extract_and_save_cookie_windows(
                     &win_clone,
@@ -86,16 +143,28 @@ fn extract_and_save_cookie_native(
     let Ok(parsed_url) = base_url.parse::<tauri::Url>() else {
         return;
     };
-    if let Ok(cookies) = win.cookies_for_url(parsed_url) {
-        for cookie in cookies {
-            if cookie.name() == "MoodleSession" && !cookie.value().is_empty() {
-                let _ =
-                    handle_save_session(state, base_url.to_string(), cookie.value().to_string());
-                let _ = app.emit("session_connected", ());
-                let _ = win.close();
-                break;
-            }
+    let mut value = win.cookies_for_url(parsed_url).ok().and_then(|cookies| {
+        cookies
+            .iter()
+            .find(|c| c.name() == "MoodleSession" && !c.value().is_empty())
+            .map(|c| c.value().to_string())
+    });
+
+    // No macOS o wry (WKWebView) filtra `cookies_for_url` por igualdade exata
+    // entre `cookie.domain()` e o host da URL, então um cookie com domínio
+    // `.host` (ponto inicial) não é encontrado. Fallback: lista todos os
+    // cookies e aceita só `MoodleSession` cujo domínio case com o host da base.
+    if value.is_none() {
+        if let Ok(all) = win.cookies() {
+            value = spof_core::auth::pick_moodle_session(
+                all.iter().map(|c| (c.name(), c.domain(), c.value())),
+                base_url,
+            );
         }
+    }
+
+    if let Some(v) = value {
+        save_and_finish(win, app, state, base_url, v);
     }
 }
 
@@ -148,14 +217,15 @@ fn extract_and_save_cookie_windows(
                                         };
 
                                         if name_str == "MoodleSession" && !value_str.is_empty() {
-                                            let _ = handle_save_session(
+                                            if save_and_finish(
+                                                &win_handle,
+                                                &app_handle,
                                                 &state_handle,
-                                                base_url_owned.clone(),
+                                                &base_url_owned,
                                                 value_str,
-                                            );
-                                            let _ = app_handle.emit("session_connected", ());
-                                            let _ = win_handle.close();
-                                            break;
+                                            ) {
+                                                break;
+                                            }
                                         }
                                     }
                                 }
