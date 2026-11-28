@@ -65,7 +65,9 @@ Widget dividedCard(BuildContext context, List<Widget> rows, {EdgeInsetsGeometry 
 
 class HomeShell extends StatefulWidget {
   final Store store;
-  const HomeShell({super.key, required this.store});
+  /// Relógio injetável (testes); em produção `DateTime.now`.
+  final DateTime Function() clock;
+  const HomeShell({super.key, required this.store, this.clock = DateTime.now});
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
@@ -96,7 +98,7 @@ class _HomeShellState extends State<HomeShell> {
       listenable: s,
       builder: (context, _) {
         final pages = [
-          DeadlinesPage(store: s),
+          DeadlinesPage(store: s, fixedNow: widget.clock()),
           CoursesPage(store: s),
           OutboxPage(store: s),
           SettingsPage(store: s),
@@ -298,6 +300,8 @@ class DeadlinesPage extends StatelessWidget {
       }
 
       group('Atrasadas', g.late);
+      // "Esta semana" = de hoje até 7 dias à frente (daysUntil <= 7, contando o dia de hoje);
+      // tarefas já vencidas e não enviadas ficam em "Atrasadas".
       group('Esta semana', g.week);
       group('Depois', g.later);
       group('Sem data', g.undated);

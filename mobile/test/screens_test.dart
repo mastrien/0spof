@@ -155,7 +155,7 @@ void main() {
     });
 
     testWidgets('folha Nova entrega alterna o carimbo', (tester) async {
-      final store = FakeStore()..deadlines = [deadline(1, relIso(const Duration(days: 3)))];
+      final store = FakeStore()..deadlines = [deadline(1, farFuture)];
       await tester.pumpWidget(app(Scaffold(body: Builder(
         builder: (c) => TextButton(onPressed: () => showNewDeliverySheet(c, store), child: const Text('abrir')),
       ))));
@@ -184,7 +184,7 @@ void main() {
     for (final b in Brightness.values) {
       testWidgets('tela Entregas (${b.name}, fonte 2x) mostra estados sem estourar', (tester) async {
         final store = FakeStore()
-          ..deadlines = [deadline(1, relIso(const Duration(days: 3)))]
+          ..deadlines = [deadline(1, farFuture)]
           ..outbox = [
             outboxItem(1, 'pending', token: true),
             outboxItem(2, 'in_flight'),

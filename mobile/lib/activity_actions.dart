@@ -128,7 +128,10 @@ Future<void> enqueueFile(BuildContext context, Store store, int assignId, String
               : 'Entrega #${r.outboxId} na fila, sem carimbo de tempo.',
     );
   } catch (e) {
-    if (context.mounted) _toast(context, 'Falha ao enfileirar: $e');
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      _toast(context, 'Falha ao enfileirar: $e');
+    }
   }
 }
 

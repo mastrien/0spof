@@ -59,7 +59,8 @@ class ScreenHeader extends StatelessWidget {
       );
 }
 
-/// Botão quadrado com borda (44 dp) usado nos cabeçalhos.
+/// Botão quadrado com borda (visual de 44 dp) usado nos cabeçalhos. Mantém o tap target
+/// padrão do Material (48 dp), então a área de toque real é maior que o desenho.
 class HeaderIconButton extends StatelessWidget {
   final String tooltip;
   final IconData icon;
@@ -77,7 +78,6 @@ class HeaderIconButton extends StatelessWidget {
         backgroundColor: p.surface,
         foregroundColor: p.ink,
         fixedSize: const Size(44, 44),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         side: BorderSide(color: p.fieldBorder),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),

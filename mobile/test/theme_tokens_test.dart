@@ -314,7 +314,7 @@ void main() {
       testWidgets('detalhe: cartão do próximo prazo usa o tom âmbar', (tester) async {
         final store = FakeStore()
           ..sections = [
-            sectionOf(1, 'Semana 1', [actJson(1, 'Entrega 1', 'assign', due: relIso(const Duration(days: 2)))]),
+            sectionOf(1, 'Semana 1', [actJson(1, 'Entrega 1', 'assign', due: farFuture)]),
           ];
         await tester.pumpWidget(app(CourseDetailPage(store: store, course: course(1)), b: b));
         await tester.pumpAndSettle();
@@ -327,7 +327,7 @@ void main() {
         tester.view.physicalSize = const Size(800, 1600);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
-        final store = FakeStore()..deadlines = [deadline(1, relIso(const Duration(days: 2)))];
+        final store = FakeStore()..deadlines = [deadline(1, farFuture)];
         await tester.pumpWidget(app(Scaffold(
           body: Builder(builder: (c) => TextButton(onPressed: () => showNewDeliverySheet(c, store), child: const Text('abrir'))),
         ), b: b));

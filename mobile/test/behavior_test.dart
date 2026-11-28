@@ -41,7 +41,7 @@ void main() {
       tester.view.physicalSize = const Size(800, 1600);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      final store = FakeStore()..deadlines = [deadline(4, relIso(const Duration(days: 2)))];
+      final store = FakeStore()..deadlines = [deadline(4, farFuture)];
       await tester.pumpWidget(app(Scaffold(
         body: Builder(
           builder: (c) => TextButton(
@@ -138,9 +138,9 @@ void main() {
         ..sections = [
           sectionOf(1, 'Álgebra relacional', [
             actJson(1, 'Apostila 03', 'resource', mime: 'application/pdf'),
-            actJson(2, 'Questionário 4', 'quiz', due: relIso(const Duration(days: 5))),
+            actJson(2, 'Questionário 4', 'quiz', due: farFuture),
             actJson(3, 'Fórum de dúvidas', 'forum'),
-            actJson(4, 'Entrega 1', 'assign', due: relIso(const Duration(days: 2))),
+            actJson(4, 'Entrega 1', 'assign', due: farFuture),
           ]),
         ];
       Future<double> tileWidth(double scale) async {

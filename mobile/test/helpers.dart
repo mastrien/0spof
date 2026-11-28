@@ -85,9 +85,11 @@ CourseExportPreview exportPreview({bool withActivity = false}) => CourseExportPr
 class FakeStore extends Store {
   final calls = <({int assignId, String path, bool fetchTsa})>[];
   CourseExportPreview? preview;
+  Object? enqueueError;
 
   @override
   Future<EnqueueResult> enqueueSubmission(int assignId, String pickedPath, {bool fetchTsa = true}) async {
+    if (enqueueError != null) throw enqueueError!;
     calls.add((assignId: assignId, path: pickedPath, fetchTsa: fetchTsa));
     return EnqueueResult.fromJson({'outbox_id': 7, 'file_hash': 'h', 'has_tsa_token': fetchTsa});
   }
@@ -104,8 +106,31 @@ class FakeStore extends Store {
   @override
   Future<String> savedMoodleUrl() async => '';
 
+  // --- Rust substituído: nada aqui toca o banco ---
+  bool pairFails = false, syncFails = false;
+  final paired = <String>[];
+  var unpairs = 0;
+  String peerJson = 'null';
+
   @override
-  Future<void> pairWithPc(String code) async => throw Exception('código inválido');
+  Future<void> rustPair(String code) async {
+    if (pairFails) throw Exception('código inválido');
+    paired.add(code);
+  }
+
+  @override
+  Future<void> rustUnpair() async => unpairs++;
+
+  @override
+  Future<String> rustPeerInfo() async => peerJson;
+
+  @override
+  Future<void> rustSyncPeer() async {
+    if (syncFails) throw Exception('sem rede');
+  }
+
+  @override
+  Future<void> refresh() async => notifyListeners();
 }
 
 Widget app(Widget home, {Brightness b = Brightness.light, double scale = 1}) => MaterialApp(
@@ -124,8 +149,6 @@ double contrastRatio(Color a, Color b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-/// Data/hora local relativa a agora (ISO sem fuso), para não depender do calendário real.
-String relIso(Duration d) => DateTime.now().add(d).toIso8601String();
 
 Section sectionOf(int id, String name, List<Map<String, dynamic>> acts) => Section.fromJson({
       'id': id,
@@ -148,3 +171,9 @@ Map<String, dynamic> actJson(int id, String title, String type,
       'due_date': due,
       'is_submitted': submitted,
     };
+
+/// Prazo muito no futuro: estável sem depender do relógio real (é "futuro" em qualquer fuso).
+const farFuture = '2099-06-01T10:00:00';
+
+/// Relógio fixo dos testes (sábado, 15/03/2031 15:59), longe da data real da máquina.
+final fixedClock = DateTime(2031, 3, 15, 15, 59);

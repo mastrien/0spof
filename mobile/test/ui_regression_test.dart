@@ -70,7 +70,7 @@ void main() {
       });
 
       testWidgets('pareamento', (tester) async {
-        final store = FakeStore();
+        final store = FakeStore()..pairFails = true;
         await tester.pumpWidget(app(PairPage(store: store), b: b));
         await tester.pump();
         await tester.tap(find.text('Parear'));
@@ -163,12 +163,12 @@ void main() {
     });
 
     testWidgets('chip do cartão "Próxima entrega"', (tester) async {
-      final due = DateTime.now().add(const Duration(days: 2)).toIso8601String();
+      const due = '2031-03-17T23:59:00';
       final store = FakeStore()
         ..deadlines = [deadline(1, due)]
         ..outbox = [outboxItem(1, 'pending', token: true)];
       Future<double> heroChipHeight(double scale) async {
-        await tester.pumpWidget(app(Scaffold(body: DeadlinesPage(store: store)), scale: scale));
+        await tester.pumpWidget(app(Scaffold(body: DeadlinesPage(store: store, fixedNow: fixedClock)), scale: scale));
         await tester.pump();
         final f = find.ancestor(of: find.text('Arquivo na fila'), matching: find.byType(Container)).first;
         return tester.getSize(f).height;
