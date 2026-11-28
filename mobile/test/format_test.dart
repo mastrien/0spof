@@ -60,6 +60,9 @@ void main() {
   test('shortHash', () {
     expect(shortHash('9f2c41ab0000000000000000000000000000000000000000000000000071d42ac'), '9f2c41ab…71d42ac');
     expect(shortHash('abc'), 'abc');
+    // limite: até 16 caracteres fica inteiro; com 17 abrevia
+    expect(shortHash('0123456789abcdef'), '0123456789abcdef');
+    expect(shortHash('0123456789abcdefg'), '01234567…abcdefg');
   });
 
   test('typeLabel e typeIcon', () {

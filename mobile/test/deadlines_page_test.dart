@@ -5,21 +5,21 @@ import 'package:spof_mobile_app/theme.dart';
 
 import 'helpers.dart';
 
-/// Sábado, 28/11/2026 15:59 (relógio injetado: nada aqui depende da data real nem do fuso).
-final now = DateTime(2026, 11, 28, 15, 59);
+/// Sábado, 15/03/2031 15:59 (relógio injetado: nada aqui depende da data real nem do fuso).
+final now = DateTime(2031, 3, 15, 15, 59);
 
 Finder hero(Pal p) => find.byWidgetPredicate(
     (w) => w is Container && w.decoration is BoxDecoration && (w.decoration as BoxDecoration).color == p.hero);
 
 FakeStore populated() => FakeStore()
   ..deadlines = [
-    deadline(6, '2026-12-20T10:00:00'), // depois
+    deadline(6, '2031-04-05T10:00:00'), // depois
     deadline(7, null), // sem data
-    deadline(5, '2026-11-29T08:00:00', submitted: true), // enviada, a mais próxima
-    deadline(4, '2026-11-29T10:00:00', type: 'quiz'), // futura mais próxima, mas não é tarefa
-    deadline(3, '2026-11-30T23:59:00'), // próxima entrega
-    deadline(2, '2026-11-28T13:00:00'), // venceu há 2 h
-    deadline(1, '2026-11-27T10:00:00'), // venceu ontem
+    deadline(5, '2031-03-16T08:00:00', submitted: true), // enviada, a mais próxima
+    deadline(4, '2031-03-16T10:00:00', type: 'quiz'), // futura mais próxima, mas não é tarefa
+    deadline(3, '2031-03-17T23:59:00'), // próxima entrega
+    deadline(2, '2031-03-15T13:00:00'), // venceu há 2 h
+    deadline(1, '2031-03-14T10:00:00'), // venceu ontem
   ]
   ..outbox = [outboxItem(1, 'pending', token: true, assignId: 3)]
   ..pcLastSync = now.subtract(const Duration(minutes: 12));
@@ -74,8 +74,8 @@ void main() {
       expect(find.descendant(of: h, matching: find.text('Tarefa 5')), findsNothing);
       expect(find.descendant(of: h, matching: find.text('Tarefa 4')), findsNothing);
       expect(find.descendant(of: h, matching: find.text('PRÓXIMA ENTREGA')), findsOneWidget);
-      // contagem regressiva medida contra o relógio injetado: 28/11 15:59 -> 30/11 23:59
-      expect(find.descendant(of: h, matching: find.textContaining('Vence seg, 30/11 às 23:59 · faltam 2d 08h', findRichText: true)),
+      // contagem regressiva medida contra o relógio injetado: 15/03 15:59 -> 17/03 23:59
+      expect(find.descendant(of: h, matching: find.textContaining('Vence seg, 17/03 às 23:59 · faltam 2d 08h', findRichText: true)),
           findsOneWidget);
       // entrega na fila com selo
       expect(find.descendant(of: h, matching: find.text('Arquivo na fila')), findsOneWidget);
@@ -107,7 +107,7 @@ void main() {
       expect(find.text('Sem arquivo'), findsNWidgets(2)); // tarefas 6 e 7
       expect(find.text('Tudo protegido · sync há 12 min'), findsOneWidget);
       expect(find.text('1 na fila'), findsOneWidget);
-      expect(find.text('Sábado, 28 de novembro'.toUpperCase()), findsOneWidget);
+      expect(find.text('Sábado, 15 de março'.toUpperCase()), findsOneWidget);
     });
 
     testWidgets('ícone sem data tem rótulo semântico do tipo (${b.name})', (tester) async {
