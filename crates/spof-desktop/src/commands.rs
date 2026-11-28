@@ -54,8 +54,32 @@ pub fn handle_get_course_details(
     api::course_details(database, course_id)
 }
 
+pub fn handle_get_last_sync_report(
+    database: &Database,
+) -> Result<Option<spof_core::api::dto::SyncReportDto>, String> {
+    api::last_sync_report(database)
+}
+
+pub fn handle_get_storage_info(
+    database: &Database,
+) -> Result<spof_core::api::dto::StorageInfoDto, String> {
+    api::storage_info(database)
+}
+
+pub fn handle_search(
+    database: &Database,
+    query: &str,
+    limit: Option<usize>,
+) -> Result<Vec<spof_core::api::dto::SearchHitDto>, String> {
+    api::search(database, query, limit)
+}
+
+pub fn handle_file_info(path: &str) -> Result<spof_core::api::dto::FileInfoDto, String> {
+    api::file_info(path)
+}
+
 pub fn handle_get_outbox_items(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
-    api::outbox_items(database)
+    api::outbox_history(database)
 }
 
 pub async fn handle_enqueue_submission(

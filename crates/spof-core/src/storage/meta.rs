@@ -25,6 +25,14 @@ impl Database {
         Ok(())
     }
 
+    /// Bytes alocados pelo banco SQLite (páginas em uso x tamanho da página).
+    pub fn database_size_bytes(&self) -> Result<u64> {
+        let conn = self.conn.lock().unwrap();
+        let pages: i64 = conn.query_row("PRAGMA page_count", [], |r| r.get(0))?;
+        let page_size: i64 = conn.query_row("PRAGMA page_size", [], |r| r.get(0))?;
+        Ok((pages.max(0) * page_size.max(0)) as u64)
+    }
+
     pub fn meta_delete(&self, key: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM app_meta WHERE key = ?1", params![key])?;

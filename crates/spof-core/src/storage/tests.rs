@@ -267,3 +267,157 @@ fn test_legacy_schema_migration_without_is_muted() {
     )
     .unwrap();
 }
+
+#[test]
+fn test_activity_index_and_batched_due_dates() {
+    use chrono::Duration;
+    let db = Database::open_in_memory().unwrap();
+    for (cid, short) in [(1, "AAA"), (2, "BBB")] {
+        db.upsert_course(&crate::models::Course {
+            id: cid,
+            fullname: format!("Curso {short}"),
+            shortname: short.into(),
+            summary: None,
+            last_synced_at: None,
+            is_muted: false,
+        })
+        .unwrap();
+        db.upsert_section(&crate::models::Section {
+            id: cid * 10,
+            course_id: cid,
+            name: format!("Seção {short}"),
+            summary: None,
+            activities: vec![],
+        })
+        .unwrap();
+    }
+    let due = chrono::Utc::now() + Duration::days(3);
+    for (id, sec, due_date) in [(1, 10, Some(due)), (2, 20, None), (3, 20, Some(due))] {
+        db.upsert_activity(&crate::models::Activity {
+            id,
+            section_id: sec,
+            title: format!("A{id}"),
+            activity_type: crate::models::ActivityType::Assign,
+            url: None,
+            description: None,
+            local_file_path: None,
+            content_mime: None,
+            due_date,
+            is_submitted: false,
+        })
+        .unwrap();
+    }
+
+    let index = db.list_activity_index().unwrap();
+    assert_eq!(index.len(), 3);
+    assert_eq!(index[0].course_short, "AAA");
+    assert_eq!(index[0].section_name, "Seção AAA");
+    assert_eq!(index[2].course_id, 2);
+
+    let dues = db.get_activity_due_dates(&[1, 2, 3, 999]).unwrap();
+    assert_eq!(dues.len(), 2, "sem prazo e desconhecidos ficam de fora");
+    assert_eq!(dues[&1].to_rfc3339(), due.to_rfc3339());
+    assert!(db.get_activity_due_dates(&[]).unwrap().is_empty());
+}
+
+#[test]
+fn test_outbox_queries_share_row_mapping() {
+    let db = Database::open_in_memory().unwrap();
+    let mut delivered = crate::models::OutboxItem::new(1, "a".into(), "h".into(), "/a".into());
+    delivered.record_success();
+    let id1 = db.insert_outbox_item(&delivered).unwrap();
+    let id2 = db
+        .insert_outbox_item(&crate::models::OutboxItem::new(
+            2,
+            "b".into(),
+            "h2".into(),
+            "/b".into(),
+        ))
+        .unwrap();
+
+    let all = db.get_all_outbox_items().unwrap();
+    assert_eq!(all.len(), 2);
+    assert_eq!(db.get_pending_outbox_items().unwrap().len(), 1);
+    let single = db.get_outbox_item(id1).unwrap().unwrap();
+    assert_eq!(single, all[0]);
+    assert_eq!(db.get_outbox_item(id2).unwrap().unwrap(), all[1]);
+    assert!(db.get_outbox_item(12345).unwrap().is_none());
+}
+
+#[test]
+fn test_due_dates_lookup_covers_more_than_one_batch() {
+    use chrono::Duration;
+    let db = Database::open_in_memory().unwrap();
+    db.upsert_course(&crate::models::Course {
+        id: 1,
+        fullname: "C".into(),
+        shortname: "C".into(),
+        summary: None,
+        last_synced_at: None,
+        is_muted: false,
+    })
+    .unwrap();
+    db.upsert_section(&crate::models::Section {
+        id: 10,
+        course_id: 1,
+        name: "S".into(),
+        summary: None,
+        activities: vec![],
+    })
+    .unwrap();
+    let base = chrono::Utc::now() + Duration::days(1);
+    // 1200 ids: 3 lotes (500 + 500 + 200); cada atividade tem um prazo diferente
+    for id in 1..=1200i64 {
+        db.upsert_activity(&crate::models::Activity {
+            id,
+            section_id: 10,
+            title: format!("A{id}"),
+            activity_type: crate::models::ActivityType::Assign,
+            url: None,
+            description: None,
+            local_file_path: None,
+            content_mime: None,
+            due_date: Some(base + Duration::minutes(id)),
+            is_submitted: false,
+        })
+        .unwrap();
+    }
+    let ids: Vec<i64> = (1..=1200).collect();
+    let dues = db.get_activity_due_dates(&ids).unwrap();
+    assert_eq!(dues.len(), 1200, "nenhum lote pode ser perdido");
+    // bordas dos lotes
+    for id in [1i64, 500, 501, 1000, 1001, 1200] {
+        assert_eq!(dues[&id], dues[&1] + Duration::minutes(id - 1), "id {id}");
+    }
+    // mistura de ids válidos e inexistentes entre lotes
+    let mixed: Vec<i64> = (400..=700).chain(5000..5100).collect();
+    assert_eq!(db.get_activity_due_dates(&mixed).unwrap().len(), 301);
+}
+
+#[test]
+fn test_due_dates_lookup_slices_ids_into_batches() {
+    let db = Database::open_in_memory().unwrap();
+    let ids: Vec<i64> = (1..=11).collect();
+    // sem fatiamento seria 1 consulta; com lote 4 são 3 (4 + 4 + 3)
+    let (_, queries) = db.lookup_due_dates(&ids, 4).unwrap();
+    assert_eq!(queries, 3);
+    let (_, queries) = db.lookup_due_dates(&ids, 11).unwrap();
+    assert_eq!(queries, 1);
+    // lote 0 não trava nem perde ids (vira 1)
+    let (_, queries) = db.lookup_due_dates(&ids, 0).unwrap();
+    assert_eq!(queries, 11);
+    assert_eq!(db.lookup_due_dates(&[], 4).unwrap().1, 0);
+    // o lote de produção precisa caber no limite de variáveis do SQLite
+    const { assert!(super::courses::DUE_DATES_BATCH <= 999) };
+}
+
+#[test]
+fn test_public_due_dates_lookup_uses_the_production_batch_size() {
+    let db = Database::open_in_memory().unwrap();
+    let n = super::courses::DUE_DATES_BATCH * 2 + 1;
+    let ids: Vec<i64> = (1..=n as i64).collect();
+    let before = db.due_date_query_count();
+    db.get_activity_due_dates(&ids).unwrap();
+    // 2 lotes cheios + 1 resto; sem fatiamento (ou com lote enorme) seria 1 consulta
+    assert_eq!(db.due_date_query_count() - before, 3);
+}

@@ -59,6 +59,24 @@ pub struct OutboxItemDto {
     pub status: String,
     pub retry_count: u32,
     pub has_rfc3161_token: bool,
+    /// Momento do registro local do item.
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
+    #[serde(default)]
+    pub last_attempt_at: Option<String>,
+    #[serde(default)]
+    pub last_error: Option<String>,
+    /// Horário emitido pela TSA (`genTime`), quando o token é legível.
+    #[serde(default)]
+    pub timestamped_at: Option<String>,
+    /// Prazo da tarefa no Moodle (RFC 3339), se sincronizado.
+    #[serde(default)]
+    pub due_date: Option<String>,
+    /// Folga em segundos entre o horário do token (ou do registro local) e o prazo; negativa = registrado após o prazo.
+    #[serde(default)]
+    pub margin_seconds: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -88,6 +106,9 @@ pub struct SyncSummaryDto {
     pub sections_synced: usize,
     pub activities_synced: usize,
     pub resources_cached: usize,
+    /// Falha ao gravar o resumo "novidades" da sync (a sincronização em si deu certo).
+    #[serde(default)]
+    pub report_save_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -152,4 +173,73 @@ pub struct UpdateInfoDto {
     pub update_available: bool,
     pub release_url: String,
     pub release_notes: Option<String>,
+}
+
+/// Uma novidade detectada na última sincronização.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncChangeDto {
+    /// `new_resource`, `new_activity`, `deadline_changed` ou `file_cached`.
+    pub kind: String,
+    pub title: String,
+    pub course_short: String,
+    /// Detalhe legível (ex.: prazo antigo → novo).
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// Resumo da última sincronização feita neste aparelho.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncReportDto {
+    pub synced_at: String,
+    pub courses_synced: usize,
+    pub sections_synced: usize,
+    pub activities_synced: usize,
+    pub resources_cached: usize,
+    /// Total de novidades; `changes` traz só as primeiras.
+    pub changes_total: usize,
+    pub changes: Vec<SyncChangeDto>,
+    /// Primeira sincronização deste banco: não há "antes" para comparar, então não há novidades.
+    #[serde(default)]
+    pub first_sync: bool,
+    /// Não foi possível ler o banco para comparar; `changes` não é confiável (vazio).
+    #[serde(default)]
+    pub comparison_failed: bool,
+    /// Falha ao gravar este relatório em `app_meta` (a sincronização em si não falha por isso);
+    /// a próxima sync não terá base de comparação confiável.
+    #[serde(default)]
+    pub save_error: Option<String>,
+}
+
+/// Espaço usado localmente.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StorageInfoDto {
+    pub database_bytes: u64,
+    pub files_bytes: u64,
+    pub files_count: usize,
+    pub total_bytes: u64,
+}
+
+/// Resultado da busca global local.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SearchHitDto {
+    /// `course`, `activity` (tarefa, questionário, fórum…) ou `resource` (material).
+    pub kind: String,
+    pub id: i64,
+    pub title: String,
+    /// Sigla da disciplina e seção, para contexto.
+    pub subtitle: String,
+    pub course_id: i64,
+    pub course_short: String,
+    #[serde(default)]
+    pub activity_type: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+}
+
+/// Dados básicos de um arquivo escolhido para entrega.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FileInfoDto {
+    pub path: String,
+    pub name: String,
+    pub size_bytes: u64,
 }

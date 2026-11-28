@@ -4,10 +4,12 @@
 //! Nada aqui imprime ou abre janelas.
 
 pub mod dto;
+pub mod search;
+pub mod sync_report;
 
 use crate::auth::{MoodleClient, MoodleSession};
 use crate::crawler::{default_cache_dir, CourseCrawler};
-use crate::outbox::OutboxEngine;
+use crate::outbox::{OutboxEngine, SubmissionProof};
 use crate::storage::{
     is_material_activity, is_pdf_activity, suggested_course_export_filename, CourseExportSelection,
     Database, ImportSummary,
@@ -120,20 +122,49 @@ pub fn course_details(database: &Database, course_id: i64) -> Result<Vec<Section
         .collect())
 }
 
-pub fn outbox_items(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
-    let items = database.get_pending_outbox_items().map_err(err)?;
+fn outbox_item_dtos(
+    database: &Database,
+    items: Vec<crate::models::OutboxItem>,
+) -> Result<Vec<OutboxItemDto>, String> {
+    // um único SELECT para todos os prazos (em vez de um por item); erro de leitura é
+    // propagado em vez de esconder a folga em silêncio
+    let ids: Vec<i64> = items.iter().map(|i| i.assign_id).collect();
+    let dues = database.get_activity_due_dates(&ids).map_err(err)?;
     Ok(items
         .into_iter()
-        .map(|item| OutboxItemDto {
-            id: item.id.unwrap_or(0),
-            assign_id: item.assign_id,
-            filename: item.filename,
-            file_hash: item.file_hash,
-            status: item.status.as_str().to_string(),
-            retry_count: item.retry_count,
-            has_rfc3161_token: item.rfc3161_token.is_some(),
+        .map(|item| {
+            let due = dues.get(&item.assign_id).copied();
+            let proof = SubmissionProof::from_outbox_item(&item).with_due_date(due);
+            OutboxItemDto {
+                id: item.id.unwrap_or(0),
+                assign_id: item.assign_id,
+                filename: item.filename,
+                file_hash: item.file_hash,
+                status: item.status.as_str().to_string(),
+                retry_count: item.retry_count,
+                has_rfc3161_token: item.rfc3161_token.is_some(),
+                created_at: item.created_at.to_rfc3339(),
+                updated_at: item.updated_at.to_rfc3339(),
+                last_attempt_at: item.last_attempt_at.map(|t| t.to_rfc3339()),
+                last_error: item.last_error,
+                timestamped_at: proof.timestamped_at.map(|t| t.to_rfc3339()),
+                due_date: due.map(|d| d.to_rfc3339()),
+                margin_seconds: proof.margin_seconds(),
+            }
         })
         .collect())
+}
+
+/// Itens ainda a enviar (pendentes ou com falha). Usado pelo celular e pelos contadores.
+pub fn outbox_items(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
+    let items = database.get_pending_outbox_items().map_err(err)?;
+    outbox_item_dtos(database, items)
+}
+
+/// Fila completa, inclusive itens já entregues (linha do tempo do desktop).
+pub fn outbox_history(database: &Database) -> Result<Vec<OutboxItemDto>, String> {
+    let items = database.get_all_outbox_items().map_err(err)?;
+    outbox_item_dtos(database, items)
 }
 
 pub async fn enqueue_submission(
@@ -188,16 +219,64 @@ pub async fn sync_moodle(
     session: MoodleSession,
     cache_dir: Option<PathBuf>,
 ) -> Result<SyncSummaryDto, String> {
+    let before = sync_report::snapshot(database).ok();
     let result = crawler_for(database, session, cache_dir)?
         .sync_all()
         .await
         .map_err(|e| format!("Falha na sincronização: {e}"))?;
-    Ok(SyncSummaryDto {
+    let summary = SyncSummaryDto {
         courses_synced: result.courses_synced,
         sections_synced: result.sections_synced,
         activities_synced: result.activities_synced,
         resources_cached: result.resources_cached,
+        report_save_error: None,
+    };
+    let after = sync_report::snapshot(database).ok();
+    // a falha ao gravar o resumo não derruba a sync, mas volta em `report_save_error`
+    Ok(sync_report::finish_sync(
+        database,
+        summary,
+        before.as_ref(),
+        after.as_ref(),
+    ))
+}
+
+/// Confere que o caminho é um arquivo legível e devolve nome e tamanho (para a tela de entrega).
+pub fn file_info(path: &str) -> Result<dto::FileInfoDto, String> {
+    let p = Path::new(path.trim());
+    let meta = std::fs::metadata(p).map_err(|_| format!("Arquivo não encontrado: {path}"))?;
+    if !meta.is_file() {
+        return Err(format!("O caminho não é um arquivo: {path}"));
+    }
+    let name = p
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "Nome de arquivo inválido".to_string())?
+        .to_string();
+    Ok(dto::FileInfoDto {
+        path: p.to_string_lossy().to_string(),
+        name,
+        size_bytes: meta.len(),
     })
+}
+
+/// Busca global em disciplinas, atividades e recursos.
+pub fn search(
+    database: &Database,
+    query: &str,
+    limit: Option<usize>,
+) -> Result<Vec<dto::SearchHitDto>, String> {
+    search::search(database, query, limit)
+}
+
+/// Novidades da última sincronização (`None` se este aparelho ainda não sincronizou).
+pub fn last_sync_report(database: &Database) -> Result<Option<dto::SyncReportDto>, String> {
+    sync_report::last_sync_report(database)
+}
+
+/// Espaço usado pelo banco e pelos arquivos baixados.
+pub fn storage_info(database: &Database) -> Result<dto::StorageInfoDto, String> {
+    sync_report::storage_info(database)
 }
 
 pub async fn download_activity_media(
@@ -472,5 +551,113 @@ mod tests {
         assert!(!items[1].selected_by_default);
         assert!(!items[1].is_pdf);
         assert!(!items[1].has_local_file);
+    }
+
+    fn seed_course_with_assign(db: &Database, assign_id: i64, due: chrono::DateTime<Utc>) {
+        db.upsert_course(&Course {
+            id: 1,
+            fullname: "C".into(),
+            shortname: "C".into(),
+            summary: None,
+            last_synced_at: None,
+            is_muted: false,
+        })
+        .unwrap();
+        db.upsert_section(&Section {
+            id: 10,
+            course_id: 1,
+            name: "S".into(),
+            summary: None,
+            activities: vec![],
+        })
+        .unwrap();
+        db.upsert_activity(&activity(assign_id, Some(due), false))
+            .unwrap();
+    }
+
+    #[test]
+    fn outbox_history_includes_delivered_with_times_and_margin() {
+        let db = Database::open_in_memory().unwrap();
+        let due = Utc::now() + Duration::days(2);
+        seed_course_with_assign(&db, 77, due);
+
+        let mut pending =
+            crate::models::OutboxItem::new(77, "a.pdf".into(), "h1".into(), "/a".into());
+        pending.last_error = Some("timeout".into());
+        db.insert_outbox_item(&pending).unwrap();
+        let mut delivered =
+            crate::models::OutboxItem::new(99, "b.pdf".into(), "h2".into(), "/b".into());
+        delivered.record_success();
+        db.insert_outbox_item(&delivered).unwrap();
+
+        // fila de envio (celular/contadores) continua só com o que falta enviar
+        let pending_only = outbox_items(&db).unwrap();
+        assert_eq!(pending_only.len(), 1);
+        assert_eq!(pending_only[0].last_error.as_deref(), Some("timeout"));
+
+        let all = outbox_history(&db).unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].status, "pending");
+        assert_eq!(all[1].status, "delivered");
+        assert!(all[1].last_attempt_at.is_some());
+        assert!(!all[0].created_at.is_empty());
+        assert_eq!(all[0].due_date.as_deref(), Some(due.to_rfc3339().as_str()));
+        let margin = all[0].margin_seconds.unwrap();
+        assert!((margin - 2 * 86_400).abs() < 5);
+        assert!(all[1].due_date.is_none() && all[1].margin_seconds.is_none());
+    }
+
+    #[test]
+    fn submission_proof_report_includes_deadline_margin() {
+        let db = Database::open_in_memory().unwrap();
+        seed_course_with_assign(&db, 5, Utc::now() + Duration::days(1));
+        let id = db
+            .insert_outbox_item(&crate::models::OutboxItem::new(
+                5,
+                "x.pdf".into(),
+                "hh".into(),
+                "/x".into(),
+            ))
+            .unwrap();
+        let proof = submission_proof(&db, id).unwrap();
+        assert!(proof.formatted_report.contains("Folga em relação ao prazo"));
+        assert!(proof.formatted_report.contains("antes do prazo"));
+    }
+
+    #[test]
+    fn file_info_reports_name_and_size_and_rejects_bad_paths() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let file = dir.path().join("trabalho.pdf");
+        std::fs::write(&file, b"12345").unwrap();
+        let info = file_info(file.to_str().unwrap()).unwrap();
+        assert_eq!(info.name, "trabalho.pdf");
+        assert_eq!(info.size_bytes, 5);
+
+        assert!(file_info(dir.path().to_str().unwrap())
+            .unwrap_err()
+            .contains("não é um arquivo"));
+        assert!(file_info("/nao/existe.pdf")
+            .unwrap_err()
+            .contains("não encontrado"));
+    }
+
+    #[test]
+    fn outbox_listing_propagates_due_date_lookup_errors() {
+        let db = Database::open_in_memory().unwrap();
+        db.insert_outbox_item(&crate::models::OutboxItem::new(
+            1,
+            "a".into(),
+            "h".into(),
+            "/a".into(),
+        ))
+        .unwrap();
+        assert!(outbox_items(&db).is_ok());
+        db.conn
+            .lock()
+            .unwrap()
+            .execute("DROP TABLE activities", [])
+            .unwrap();
+        assert!(outbox_items(&db).is_err());
+        assert!(outbox_history(&db).is_err());
     }
 }

@@ -36,7 +36,7 @@ pub fn list_tools() -> Value {
             },
             {
                 "name": "queue_submission",
-                "description": "Enfileira um arquivo local para submissão de uma tarefa no Moodle, calculando o hash SHA-256 e opcionalmente selando com carimbo de tempo público RFC 3161.",
+                "description": "Registra localmente um arquivo para uma tarefa do Moodle, calculando o hash SHA-256 e, opcionalmente, obtendo um token de tempo público RFC 3161. Não envia o arquivo ao Moodle; a entrega é manual.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -58,7 +58,7 @@ pub fn list_tools() -> Value {
             },
             {
                 "name": "get_submission_proof",
-                "description": "Retorna o comprovante/dossiê criptográfico com carimbo auditável de uma tarefa enfileirada para justificar entrega pré-prazo.",
+                "description": "Retorna o registro local (hash e token de tempo RFC 3161, assinatura não verificada) de um arquivo registrado. Não é prova de entrega ao Moodle.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -72,7 +72,7 @@ pub fn list_tools() -> Value {
             },
             {
                 "name": "get_outbox_status",
-                "description": "Monitora as tarefas pendentes na fila de reenvio outbox.",
+                "description": "Lista os arquivos registrados localmente na fila de entregas (o 0spof não envia nem reenvia ao Moodle).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {}

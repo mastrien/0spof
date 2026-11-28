@@ -187,6 +187,7 @@ impl Database {
             DELETE FROM sections;
             DELETE FROM courses;
             DELETE FROM outbox_items;
+            DELETE FROM app_meta WHERE key = 'last_sync_report';
             PRAGMA foreign_keys = ON;
             VACUUM;
             "#,

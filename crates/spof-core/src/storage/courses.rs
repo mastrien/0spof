@@ -2,7 +2,20 @@ use super::Database;
 use crate::error::Result;
 use crate::models::{Activity, ActivityType, Course, Section};
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Row};
+use rusqlite::{params, params_from_iter, Row};
+use std::collections::HashMap;
+
+/// Ids por consulta em `get_activity_due_dates` (abaixo do limite de variáveis do SQLite).
+pub(crate) const DUE_DATES_BATCH: usize = 500;
+
+/// Atividade com o contexto (seção e disciplina), lida numa única consulta.
+#[derive(Debug, Clone)]
+pub struct ActivityIndexRow {
+    pub activity: Activity,
+    pub section_name: String,
+    pub course_id: i64,
+    pub course_short: String,
+}
 
 fn map_course_row(row: &Row) -> rusqlite::Result<Course> {
     let last_synced_str: Option<String> = row.get(4)?;
@@ -287,6 +300,72 @@ impl Database {
             activity_list.push(activity_row?);
         }
         Ok(activity_list)
+    }
+
+    /// Todas as atividades com seção e disciplina em uma única consulta (busca, relatório, uso de disco).
+    pub fn list_activity_index(&self) -> Result<Vec<ActivityIndexRow>> {
+        let connection = self.conn.lock().unwrap();
+        let mut statement = connection.prepare(
+            r#"
+            SELECT a.id, a.section_id, a.title, a.activity_type, a.url, a.description,
+                   a.local_file_path, a.content_mime, a.due_date, a.is_submitted,
+                   s.name, c.id, c.shortname
+            FROM activities a
+            JOIN sections s ON a.section_id = s.id
+            JOIN courses c ON s.course_id = c.id
+            ORDER BY c.id, s.id, a.id
+            "#,
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(ActivityIndexRow {
+                activity: map_activity_row(row)?,
+                section_name: row.get(10)?,
+                course_id: row.get(11)?,
+                course_short: row.get(12)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    /// Prazos de várias atividades de uma vez (evita uma consulta por item).
+    /// Ids desconhecidos ou sem prazo ficam fora do mapa.
+    pub fn get_activity_due_dates(&self, ids: &[i64]) -> Result<HashMap<i64, DateTime<Utc>>> {
+        Ok(self.lookup_due_dates(ids, DUE_DATES_BATCH)?.0)
+    }
+
+    /// Faz a consulta em blocos de `batch_size` ids e devolve também quantas consultas foram
+    /// feitas (permite testar o fatiamento com um tamanho de lote pequeno).
+    pub(crate) fn lookup_due_dates(
+        &self,
+        ids: &[i64],
+        batch_size: usize,
+    ) -> Result<(HashMap<i64, DateTime<Utc>>, usize)> {
+        let mut map = HashMap::new();
+        let mut queries = 0;
+        let connection = self.conn.lock().unwrap();
+        // limite de variáveis do SQLite: processa em blocos
+        for chunk in ids.chunks(batch_size.max(1)) {
+            queries += 1;
+            self.count_due_date_query();
+            let placeholders = vec!["?"; chunk.len()].join(",");
+            let mut statement = connection.prepare(&format!(
+                "SELECT id, due_date FROM activities WHERE due_date IS NOT NULL AND id IN ({placeholders})"
+            ))?;
+            let rows = statement.query_map(params_from_iter(chunk.iter()), |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for row in rows {
+                let (id, text) = row?;
+                if let Ok(dt) = DateTime::parse_from_rfc3339(&text) {
+                    map.insert(id, dt.with_timezone(&Utc));
+                }
+            }
+        }
+        Ok((map, queries))
     }
 
     pub fn get_upcoming_deadlines(&self) -> Result<Vec<Activity>> {

@@ -119,7 +119,7 @@ async fn test_desktop_handlers_flow() {
 
     let proof = handle_get_submission_proof(&db, enqueue_res.outbox_id).unwrap();
     assert_eq!(proof.assign_id, 9901);
-    assert!(proof.formatted_report.contains("COMPROVANTE"));
+    assert!(proof.formatted_report.contains("REGISTRO LOCAL DE ARQUIVO"));
 }
 
 #[tokio::test]
@@ -162,4 +162,86 @@ fn test_desktop_open_target_rejects_empty() {
 fn test_desktop_course_details_empty_course() {
     let db = Database::open_in_memory().unwrap();
     assert!(handle_get_course_details(&db, 404).unwrap().is_empty());
+}
+
+#[test]
+fn test_desktop_sync_report_and_storage_info_handlers() {
+    let db = Database::open_in_memory().unwrap();
+    assert!(handle_get_last_sync_report(&db).unwrap().is_none());
+    let info = handle_get_storage_info(&db).unwrap();
+    assert!(info.database_bytes > 0);
+    assert_eq!(info.files_count, 0);
+    assert_eq!(info.total_bytes, info.database_bytes);
+}
+
+#[test]
+fn test_desktop_search_handler() {
+    let db = Database::open_in_memory().unwrap();
+    db.upsert_course(&Course {
+        id: 1,
+        fullname: "Cálculo Diferencial".into(),
+        shortname: "CDI".into(),
+        summary: None,
+        last_synced_at: None,
+        is_muted: false,
+    })
+    .unwrap();
+    let hits = handle_search(&db, "calculo", None).unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].kind, "course");
+    assert!(handle_search(&db, "", None).unwrap().is_empty());
+}
+
+#[test]
+fn test_desktop_file_info_handler() {
+    let mut temp = NamedTempFile::new().unwrap();
+    temp.write_all(b"abc").unwrap();
+    temp.flush().unwrap();
+    let info = handle_file_info(temp.path().to_str().unwrap()).unwrap();
+    assert_eq!(info.size_bytes, 3);
+    assert!(handle_file_info("/definitivamente/nao/existe").is_err());
+}
+
+#[test]
+fn test_desktop_outbox_handler_returns_history_including_delivered() {
+    use spof_core::models::OutboxItem;
+    let db = Database::open_in_memory().unwrap();
+    let mut delivered = OutboxItem::new(1, "a.pdf".into(), "h1".into(), "/a".into());
+    delivered.record_success();
+    db.insert_outbox_item(&delivered).unwrap();
+    db.insert_outbox_item(&OutboxItem::new(
+        2,
+        "b.pdf".into(),
+        "h2".into(),
+        "/b".into(),
+    ))
+    .unwrap();
+
+    let items = handle_get_outbox_items(&db).unwrap();
+    assert_eq!(items.len(), 2, "o desktop deve receber também os entregues");
+    assert!(items.iter().any(|i| i.status == "delivered"));
+    assert!(items.iter().any(|i| i.status == "pending"));
+    // contador de pendentes segue contando só o que falta enviar
+    assert_eq!(handle_get_system_status(&db).unwrap().outbox_count, 1);
+}
+
+#[test]
+fn test_desktop_last_sync_report_carries_save_error() {
+    use spof_core::api::dto::SyncReportDto;
+    let db = Database::open_in_memory().unwrap();
+    let report = SyncReportDto {
+        synced_at: "2026-11-28T00:00:00+00:00".into(),
+        courses_synced: 1,
+        sections_synced: 1,
+        activities_synced: 1,
+        resources_cached: 0,
+        changes_total: 0,
+        changes: vec![],
+        first_sync: true,
+        comparison_failed: false,
+        save_error: Some("disco cheio".into()),
+    };
+    db.set_unsaved_sync_report(Some(serde_json::to_string(&report).unwrap()));
+    let read = handle_get_last_sync_report(&db).unwrap().unwrap();
+    assert_eq!(read.save_error.as_deref(), Some("disco cheio"));
 }

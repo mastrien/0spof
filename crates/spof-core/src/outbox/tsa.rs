@@ -1,4 +1,5 @@
 use crate::error::{Result, SpofError};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use std::time::Duration;
 
 pub const DEFAULT_TSA_URL: &str = "https://freetsa.org/tsr";
@@ -111,6 +112,31 @@ impl TsaClient {
     }
 }
 
+/// Extrai o horário (`genTime`) de um carimbo RFC 3161 em DER.
+///
+/// Não valida a assinatura: apenas localiza o primeiro `GeneralizedTime` (tag 0x18) do token,
+/// que na estrutura TimeStampResp é o `genTime` do TSTInfo (certificados vêm depois e usam
+/// `UTCTime`). Serve para exibir "carimbado em" ao usuário.
+pub fn parse_timestamp_gen_time(token: &[u8]) -> Option<DateTime<Utc>> {
+    let mut i = 0;
+    while i + 2 < token.len() {
+        if token[i] == 0x18 {
+            let len = token[i + 1] as usize;
+            if (15..=32).contains(&len) && i + 2 + len <= token.len() {
+                let raw = &token[i + 2..i + 2 + len];
+                let digits_ok = raw[..14].iter().all(u8::is_ascii_digit);
+                if digits_ok && raw.ends_with(b"Z") {
+                    let text = std::str::from_utf8(&raw[..14]).ok()?;
+                    let naive = NaiveDateTime::parse_from_str(text, "%Y%m%d%H%M%S").ok()?;
+                    return Some(naive.and_utc());
+                }
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
 fn hex_to_bytes(s: &str) -> Option<Vec<u8>> {
     if !s.len().is_multiple_of(2) {
         return None;
@@ -137,6 +163,34 @@ mod tests {
 
         // Check for version 1
         assert_eq!(&der[2..5], &[0x02, 0x01, 0x01]);
+    }
+
+    #[test]
+    fn test_parse_timestamp_gen_time_finds_generalized_time() {
+        // Lixo + GeneralizedTime "20261128104200Z" (15 bytes) + resto.
+        let mut token = vec![0x30, 0x82, 0x01, 0x00, 0x02, 0x01, 0x01];
+        token.extend_from_slice(&[0x18, 0x0f]);
+        token.extend_from_slice(b"20261128104200Z");
+        token.extend_from_slice(&[0x17, 0x0d]);
+        token.extend_from_slice(b"270101000000Z");
+        let t = parse_timestamp_gen_time(&token).expect("genTime");
+        assert_eq!(t.to_rfc3339(), "2026-11-28T10:42:00+00:00");
+    }
+
+    #[test]
+    fn test_parse_timestamp_gen_time_accepts_fraction_and_rejects_garbage() {
+        let mut token = vec![0x18, 0x13];
+        token.extend_from_slice(b"20260102030405.123Z");
+        assert_eq!(
+            parse_timestamp_gen_time(&token).unwrap().to_rfc3339(),
+            "2026-01-02T03:04:05+00:00"
+        );
+        assert!(parse_timestamp_gen_time(&[]).is_none());
+        assert!(parse_timestamp_gen_time(&[0x30, 0x03, 0x01, 0x02, 0x03]).is_none());
+        // tag 0x18 mas conteúdo não numérico
+        let mut bad = vec![0x18, 0x0f];
+        bad.extend_from_slice(b"abcdefghijklmnZ");
+        assert!(parse_timestamp_gen_time(&bad).is_none());
     }
 
     #[test]

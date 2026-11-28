@@ -42,7 +42,7 @@ pub enum Commands {
         cookie: Option<String>,
     },
 
-    /// Enfileira uma entrega de tarefa com hash SHA-256 e selagem RFC 3161
+    /// Registra localmente um arquivo para uma tarefa (hash SHA-256 e token RFC 3161 opcional); não envia ao Moodle
     Queue {
         /// ID numérico da tarefa no Moodle
         #[arg(short, long)]
@@ -57,7 +57,7 @@ pub enum Commands {
         tsa: bool,
     },
 
-    /// Emite o dossiê/comprovante criptográfico de uma entrega na fila
+    /// Emite o registro local (hash e token de tempo) de uma entrega na fila; não é prova de entrega
     Proof {
         /// ID do item na outbox
         #[arg(short, long)]
@@ -155,12 +155,12 @@ pub async fn run_command(db: &Database, cmd: &Commands) -> Result<String, String
                 .map_err(|e| e.to_string())?;
 
             Ok(format!(
-                "Tarefa #{} enfileirada com sucesso!\nID Outbox: {}\nArquivo: {}\nSHA-256: {}\nCarimbo TSA: {}",
+                "Tarefa #{} enfileirada com sucesso!\nID Outbox: {}\nArquivo: {}\nSHA-256: {}\nToken RFC 3161 (assinatura não verificada): {}\nRegistro local: o 0spof não envia ao Moodle.",
                 assign,
                 item.id.unwrap_or(0),
                 item.filename,
                 item.file_hash,
-                if item.rfc3161_token.is_some() { "Selado" } else { "Local" }
+                if item.rfc3161_token.is_some() { "obtido" } else { "não obtido" }
             ))
         }
 
@@ -277,7 +277,7 @@ mod tests {
         // Check proof
         let proof_res = run_command(&db, &Commands::Proof { id: 1 }).await;
         assert!(proof_res.is_ok());
-        assert!(proof_res.unwrap().contains("COMPROVANTE CRIPTOGRÁFICO"));
+        assert!(proof_res.unwrap().contains("REGISTRO LOCAL DE ARQUIVO"));
     }
 
     #[tokio::test]

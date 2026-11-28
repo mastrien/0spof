@@ -116,12 +116,12 @@ pub async fn execute_tool(
                 .map_err(|e| e.to_string())?;
 
             let res_text = format!(
-                "Tarefa #{} enfileirada com sucesso!\nID Outbox: {}\nArquivo: {}\nSHA-256: {}\nCarimbo TSA: {}",
+                "Tarefa #{} enfileirada com sucesso!\nID Outbox: {}\nArquivo: {}\nSHA-256: {}\nToken RFC 3161 (assinatura não verificada): {}\nRegistro local: o 0spof não envia ao Moodle.",
                 assign_id,
                 item.id.unwrap_or(0),
                 item.filename,
                 item.file_hash,
-                if item.rfc3161_token.is_some() { "Presente" } else { "Ausente" }
+                if item.rfc3161_token.is_some() { "obtido" } else { "não obtido" }
             );
 
             Ok(json!({
