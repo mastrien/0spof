@@ -119,7 +119,7 @@ async fn test_desktop_handlers_flow() {
 
     let proof = handle_get_submission_proof(&db, enqueue_res.outbox_id).unwrap();
     assert_eq!(proof.assign_id, 9901);
-    assert!(proof.formatted_report.contains("COMPROVANTE"));
+    assert!(proof.formatted_report.contains("REGISTRO LOCAL DE ARQUIVO"));
 }
 
 #[tokio::test]

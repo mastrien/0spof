@@ -108,7 +108,7 @@ pub fn diff_snapshots(before: &Snapshot, after: &Snapshot) -> Vec<SyncChangeDto>
 /// Monta o relatório e o grava como "última sincronização".
 ///
 /// Critério de `first_sync`: o retrato "antes" está vazio **e** não existe relatório anterior
-/// em `app_meta` (este aparelho nunca sincronizou este banco). Assim, um banco que já
+/// válido em `app_meta` (este aparelho nunca sincronizou este banco). Assim, um banco que já
 /// sincronizou antes, mesmo com zero atividades, não é tratado como primeira sync: o que
 /// aparecer depois conta como novidade. `wipe_all_data` apaga o relatório, então apagar tudo
 /// e sincronizar de novo volta a ser "primeira sincronização".
@@ -121,7 +121,8 @@ pub fn record_sync_report(
     before: Option<&Snapshot>,
     after: Option<&Snapshot>,
 ) -> SyncReportDto {
-    let had_previous_report = matches!(database.meta_get(LAST_SYNC_REPORT_KEY), Ok(Some(_)));
+    // só conta como relatório anterior um valor que ainda lê como relatório (JSON corrompido não)
+    let had_previous_report = matches!(last_sync_report(database), Ok(Some(_)));
     let (changes, first_sync, comparison_failed) = match (before, after) {
         (Some(b), Some(_)) if b.is_empty() && !had_previous_report => (Vec::new(), true, false),
         (Some(b), Some(a)) => (diff_snapshots(b, a), false, false),
@@ -137,11 +138,21 @@ pub fn record_sync_report(
         changes: changes.into_iter().take(MAX_LISTED_CHANGES).collect(),
         first_sync,
         comparison_failed,
+        save_error: None,
     };
-    if let Ok(json) = serde_json::to_string(&report) {
-        let _ = database.meta_set(LAST_SYNC_REPORT_KEY, &json);
+    // falha de gravação não derruba a sincronização, mas fica visível no relatório devolvido
+    let save_error = serde_json::to_string(&report)
+        .map_err(|e| e.to_string())
+        .and_then(|json| {
+            database
+                .meta_set(LAST_SYNC_REPORT_KEY, &json)
+                .map_err(|e| e.to_string())
+        })
+        .err();
+    SyncReportDto {
+        save_error,
+        ..report
     }
-    report
 }
 
 /// Relatório da última sincronização feita neste aparelho (`None` se nunca sincronizou).
@@ -327,6 +338,37 @@ mod tests {
         let second = record_sync_report(&db, &summary(), Some(&empty), Some(&after));
         assert!(!second.first_sync, "já havia relatório anterior");
         assert_eq!(second.changes_total, 3);
+    }
+
+    #[test]
+    fn corrupted_previous_report_does_not_count_as_previous() {
+        let db = Database::open_in_memory().unwrap();
+        db.meta_set(LAST_SYNC_REPORT_KEY, "{lixo").unwrap();
+        let empty = Snapshot::new();
+        let mut after = Snapshot::new();
+        after.insert(1, snap("X", "resource", None, false));
+        let r = record_sync_report(&db, &summary(), Some(&empty), Some(&after));
+        assert!(r.first_sync, "valor ilegível não é relatório anterior");
+        assert_eq!(r.changes_total, 0);
+        // e foi regravado como relatório válido
+        assert!(last_sync_report(&db).unwrap().is_some());
+    }
+
+    #[test]
+    fn save_failure_is_reported_without_failing_the_sync() {
+        let db = Database::open_in_memory().unwrap();
+        db.conn
+            .lock()
+            .unwrap()
+            .execute("DROP TABLE app_meta", [])
+            .unwrap();
+        let empty = Snapshot::new();
+        let r = record_sync_report(&db, &summary(), Some(&empty), Some(&empty));
+        assert!(r.save_error.is_some());
+
+        let ok_db = Database::open_in_memory().unwrap();
+        let ok = record_sync_report(&ok_db, &summary(), Some(&empty), Some(&empty));
+        assert!(ok.save_error.is_none());
     }
 
     #[test]

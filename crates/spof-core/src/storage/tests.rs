@@ -393,3 +393,20 @@ fn test_due_dates_lookup_covers_more_than_one_batch() {
     let mixed: Vec<i64> = (400..=700).chain(5000..5100).collect();
     assert_eq!(db.get_activity_due_dates(&mixed).unwrap().len(), 301);
 }
+
+#[test]
+fn test_due_dates_lookup_slices_ids_into_batches() {
+    let db = Database::open_in_memory().unwrap();
+    let ids: Vec<i64> = (1..=11).collect();
+    // sem fatiamento seria 1 consulta; com lote 4 são 3 (4 + 4 + 3)
+    let (_, queries) = db.lookup_due_dates(&ids, 4).unwrap();
+    assert_eq!(queries, 3);
+    let (_, queries) = db.lookup_due_dates(&ids, 11).unwrap();
+    assert_eq!(queries, 1);
+    // lote 0 não trava nem perde ids (vira 1)
+    let (_, queries) = db.lookup_due_dates(&ids, 0).unwrap();
+    assert_eq!(queries, 11);
+    assert_eq!(db.lookup_due_dates(&[], 4).unwrap().1, 0);
+    // o lote de produção precisa caber no limite de variáveis do SQLite
+    const { assert!(super::courses::DUE_DATES_BATCH <= 999) };
+}

@@ -77,11 +77,11 @@ impl SubmissionProof {
             .map(|due| (due - self.sealed_at()).num_seconds())
     }
 
-    /// Formats the audit report as plain text for academic submission evidence.
+    /// Formata o registro local (hash e token de tempo) em texto. Não é prova de entrega.
     pub fn formatted_report(&self) -> String {
         format!(
             r#"================================================================================
-0spof - COMPROVANTE CRIPTOGRÁFICO DE REGISTRO LOCAL DE ARQUIVO
+0spof - REGISTRO LOCAL DE ARQUIVO (hash e token de tempo, sem prova de entrega)
 ================================================================================
 ID da Tarefa:              {}
 Nome do Arquivo:           {}
@@ -136,7 +136,7 @@ token com ferramenta própria (ex.: openssl ts -verify) antes de apresentá-lo.
     }
 }
 
-/// The OutboxEngine orchestrates offline task queueing, retry backoffs, and cryptographic sealing.
+/// O OutboxEngine registra arquivos localmente (hash SHA-256 e token RFC 3161 opcional). Não envia ao Moodle.
 pub struct OutboxEngine {
     db: Database,
     tsa_client: TsaClient,
@@ -389,7 +389,9 @@ mod tests {
         assert_eq!(proof.file_hash, item.file_hash);
 
         let report = proof.formatted_report();
-        assert!(report.contains("0spof - COMPROVANTE"));
+        assert!(report.contains("0spof - REGISTRO LOCAL DE ARQUIVO"));
+        assert!(report.contains("sem prova de entrega"));
+        assert!(!report.to_uppercase().contains("COMPROVANTE"));
         assert!(report.contains(&item.file_hash));
     }
 }

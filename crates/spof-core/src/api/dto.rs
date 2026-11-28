@@ -201,6 +201,10 @@ pub struct SyncReportDto {
     /// Não foi possível ler o banco para comparar; `changes` não é confiável (vazio).
     #[serde(default)]
     pub comparison_failed: bool,
+    /// Falha ao gravar este relatório em `app_meta` (a sincronização em si não falha por isso);
+    /// a próxima sync não terá base de comparação confiável.
+    #[serde(default)]
+    pub save_error: Option<String>,
 }
 
 /// Espaço usado localmente.

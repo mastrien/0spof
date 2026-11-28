@@ -56,7 +56,7 @@ async fn test_moodle_mcp_tools_flow() {
         .await
         .unwrap();
     let proof_txt = proof_res["content"][0]["text"].as_str().unwrap();
-    assert!(proof_txt.contains("COMPROVANTE CRIPTOGRÁFICO"));
+    assert!(proof_txt.contains("REGISTRO LOCAL DE ARQUIVO"));
 
     // 5. get_outbox_status
     let outbox_res = execute_tool(&db, "get_outbox_status", &json!({}))

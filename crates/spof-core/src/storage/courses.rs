@@ -5,6 +5,9 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, params_from_iter, Row};
 use std::collections::HashMap;
 
+/// Ids por consulta em `get_activity_due_dates` (abaixo do limite de variáveis do SQLite).
+pub(crate) const DUE_DATES_BATCH: usize = 500;
+
 /// Atividade com o contexto (seção e disciplina), lida numa única consulta.
 #[derive(Debug, Clone)]
 pub struct ActivityIndexRow {
@@ -331,10 +334,22 @@ impl Database {
     /// Prazos de várias atividades de uma vez (evita uma consulta por item).
     /// Ids desconhecidos ou sem prazo ficam fora do mapa.
     pub fn get_activity_due_dates(&self, ids: &[i64]) -> Result<HashMap<i64, DateTime<Utc>>> {
+        Ok(self.lookup_due_dates(ids, DUE_DATES_BATCH)?.0)
+    }
+
+    /// Faz a consulta em blocos de `batch_size` ids e devolve também quantas consultas foram
+    /// feitas (permite testar o fatiamento com um tamanho de lote pequeno).
+    pub(crate) fn lookup_due_dates(
+        &self,
+        ids: &[i64],
+        batch_size: usize,
+    ) -> Result<(HashMap<i64, DateTime<Utc>>, usize)> {
         let mut map = HashMap::new();
+        let mut queries = 0;
         let connection = self.conn.lock().unwrap();
         // limite de variáveis do SQLite: processa em blocos
-        for chunk in ids.chunks(500) {
+        for chunk in ids.chunks(batch_size.max(1)) {
+            queries += 1;
             let placeholders = vec!["?"; chunk.len()].join(",");
             let mut statement = connection.prepare(&format!(
                 "SELECT id, due_date FROM activities WHERE due_date IS NOT NULL AND id IN ({placeholders})"
@@ -349,7 +364,7 @@ impl Database {
                 }
             }
         }
-        Ok(map)
+        Ok((map, queries))
     }
 
     pub fn get_upcoming_deadlines(&self) -> Result<Vec<Activity>> {
