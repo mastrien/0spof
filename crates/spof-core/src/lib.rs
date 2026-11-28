@@ -5,6 +5,7 @@ pub mod crypto;
 pub mod error;
 pub mod models;
 pub mod outbox;
+pub mod paths;
 pub mod storage;
 pub mod sync;
 pub mod update;
