@@ -6,49 +6,9 @@ import 'package:spof_mobile_app/new_delivery_sheet.dart';
 import 'package:spof_mobile_app/outbox_page.dart';
 import 'package:spof_mobile_app/screens.dart';
 import 'package:spof_mobile_app/settings_page.dart';
-import 'package:spof_mobile_app/store.dart';
 import 'package:spof_mobile_app/theme.dart';
 
-Deadline deadline(int id, String? due, {bool submitted = false, String type = 'assign', String title = 'Tarefa'}) =>
-    Deadline.fromJson({
-      'id': id,
-      'section_id': 1,
-      'title': '$title $id',
-      'activity_type': type,
-      'url': null,
-      'due_date': due,
-      'is_submitted': submitted,
-    });
-
-OutboxItem outboxItem(int id, String status, {bool token = false, int assignId = 1, int retries = 0}) =>
-    OutboxItem.fromJson({
-      'id': id,
-      'assign_id': assignId,
-      'filename': 'arquivo_$id.pdf',
-      'file_hash': '9f2c41ab0000000000000000000000000000000000000000000000000071d42ac',
-      'status': status,
-      'retry_count': retries,
-      'has_rfc3161_token': token,
-    });
-
-class FakeStore extends Store {
-  final calls = <({int assignId, String path, bool fetchTsa})>[];
-
-  @override
-  Future<EnqueueResult> enqueueSubmission(int assignId, String pickedPath, {bool fetchTsa = true}) async {
-    calls.add((assignId: assignId, path: pickedPath, fetchTsa: fetchTsa));
-    return EnqueueResult.fromJson({'outbox_id': 7, 'file_hash': 'h', 'has_tsa_token': fetchTsa});
-  }
-}
-
-Widget app(Widget home, {Brightness b = Brightness.light, double scale = 1}) => MaterialApp(
-      theme: buildTheme(b),
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
-        child: child!,
-      ),
-      home: home,
-    );
+import 'helpers.dart';
 
 void main() {
   group('groupDeadlines', () {
@@ -62,11 +22,13 @@ void main() {
         deadline(5, '2026-12-06T12:00:00'), // +8 dias
         deadline(6, null),
         deadline(7, '2026-11-28T16:00:00', submitted: true), // futura e enviada
+        deadline(8, null, submitted: true), // sem prazo e enviada
       ];
       final g = groupDeadlines(items, now);
       expect(g.late.map((d) => d.id), [1]);
-      expect(g.done.map((d) => d.id), [2]);
-      expect(g.week.map((d) => d.id), [3, 4, 7]);
+      // enviadas ficam sempre em "Enviadas", mesmo com prazo futuro ou sem prazo
+      expect(g.done.map((d) => d.id), [2, 7, 8]);
+      expect(g.week.map((d) => d.id), [3, 4]);
       expect(g.later.map((d) => d.id), [5]);
       expect(g.undated.map((d) => d.id), [6]);
     });
@@ -85,6 +47,19 @@ void main() {
       final b = statusBannerFor(outbox: [outboxItem(1, 'pending', token: true)], pcSyncError: null, pcLastSync: sync, now: now);
       expect(b.tone, Tone.ok);
       expect(b.text, 'Tudo protegido · sync há 12 min');
+    });
+
+    test('sync com mais de 24 h é aviso; no limite ainda é verde', () {
+      final stale = statusBannerFor(
+          outbox: [], pcSyncError: null, pcLastSync: now.subtract(const Duration(days: 5)), now: now);
+      expect(stale.tone, Tone.warn);
+      expect(stale.text, 'Sync desatualizada · há 5 d');
+      final edge = statusBannerFor(
+          outbox: [], pcSyncError: null, pcLastSync: now.subtract(const Duration(hours: 24)), now: now);
+      expect(edge.tone, Tone.ok);
+      final over = statusBannerFor(
+          outbox: [], pcSyncError: null, pcLastSync: now.subtract(const Duration(hours: 24, minutes: 1)), now: now);
+      expect(over.tone, Tone.warn);
     });
 
     test('sem nenhuma sync é aviso', () {

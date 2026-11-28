@@ -159,16 +159,19 @@ class DeadlineGroups {
   final List<Deadline> late = [], week = [], later = [], undated = [], done = [];
 }
 
-/// Atrasadas (vencidas e não enviadas), esta semana (hoje até 7 dias à frente),
-/// depois, sem data e já enviadas cujo prazo passou.
+/// Tarefas já enviadas vão sempre para "Enviadas" (com ou sem prazo, vencido ou futuro),
+/// coerente com o rótulo. As demais: atrasadas (vencidas), esta semana (hoje até 7 dias
+/// à frente), depois e sem data.
 DeadlineGroups groupDeadlines(List<Deadline> items, DateTime now) {
   final g = DeadlineGroups();
   for (final d in items) {
     final due = d.due;
-    if (due == null) {
+    if (d.submitted) {
+      g.done.add(d);
+    } else if (due == null) {
       g.undated.add(d);
     } else if (due.isBefore(now)) {
-      (d.submitted ? g.done : g.late).add(d);
+      g.late.add(d);
     } else if (daysUntil(due, now: now) <= 7) {
       g.week.add(d);
     } else {
@@ -177,6 +180,9 @@ DeadlineGroups groupDeadlines(List<Deadline> items, DateTime now) {
   }
   return g;
 }
+
+/// Idade a partir da qual a última sincronização é considerada desatualizada.
+const staleSyncAfter = Duration(hours: 24);
 
 /// Texto, tom e ícone da faixa de status de Prazos.
 ({String text, Tone tone, IconData icon}) statusBannerFor({
@@ -209,6 +215,10 @@ DeadlineGroups groupDeadlines(List<Deadline> items, DateTime now) {
   }
   if (pcLastSync == null) {
     return (text: 'Ainda sem sincronização', tone: Tone.warn, icon: warn);
+  }
+  // Sync antiga (mais de 24 h) não é "tudo protegido": os dados podem estar defasados.
+  if ((now ?? DateTime.now()).difference(pcLastSync) > staleSyncAfter) {
+    return (text: 'Sync desatualizada · ${fmtAgo(pcLastSync, now: now)}', tone: Tone.warn, icon: warn);
   }
   return (text: 'Tudo protegido$syncText', tone: Tone.ok, icon: Icons.verified_user_outlined);
 }
@@ -423,12 +433,15 @@ class _DeadlineRow extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 44,
-              height: 44,
+              // cresce com fonte grande em vez de estourar
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              alignment: Alignment.center,
               decoration: BoxDecoration(color: p.mutBg, borderRadius: BorderRadius.circular(10)),
               child: due == null
                   ? Icon(typeIcon(d.type), color: p.muted, semanticLabel: typeLabel(d.type))
                   : Column(
+                      mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(weekdayAbbr(due),

@@ -72,7 +72,12 @@ void main() {
     expect(typeLabel('page'), 'Página');
     expect(typeLabel('outro'), 'outro');
     expect(typeIcon('assign'), Icons.assignment_outlined);
+    expect(typeIcon('resource'), Icons.description_outlined);
+    expect(typeIcon('folder'), Icons.folder_outlined);
+    expect(typeIcon('url'), Icons.link);
+    expect(typeIcon('forum'), Icons.forum_outlined);
     expect(typeIcon('quiz'), Icons.quiz_outlined);
+    expect(typeIcon('page'), Icons.extension_outlined);
     expect(typeIcon('xyz'), Icons.extension_outlined);
   });
 

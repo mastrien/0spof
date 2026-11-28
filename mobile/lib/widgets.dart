@@ -130,15 +130,15 @@ class SpofCard extends StatelessWidget {
     final p = Pal.of(context);
     return Padding(
       padding: margin,
-      child: Container(
-        padding: padding,
+      // Material (e não Container com cor) para que InkWell/ListTile filhos mostrem o ripple.
+      child: Material(
+        color: color ?? p.surface,
         clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: color ?? p.surface,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: borderColor ?? p.border),
+          side: BorderSide(color: borderColor ?? p.border),
         ),
-        child: child,
+        child: padding == null ? child : Padding(padding: padding!, child: child),
       ),
     );
   }
