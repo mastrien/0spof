@@ -451,6 +451,14 @@ mod tests {
     }
 
     #[test]
+    fn wipe_clears_unsaved_report_kept_in_memory() {
+        let db = Database::open_in_memory().unwrap();
+        db.set_unsaved_sync_report(Some("{}".into()));
+        db.wipe_all_data().unwrap();
+        assert!(db.unsaved_sync_report().is_none());
+    }
+
+    #[test]
     fn unreadable_snapshot_marks_report_untrusted_instead_of_all_new() {
         let db = Database::open_in_memory().unwrap();
         let mut after = Snapshot::new();
