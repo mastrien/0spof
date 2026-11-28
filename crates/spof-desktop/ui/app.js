@@ -55,29 +55,155 @@ function formatBytes(bytes) {
   return `${formatted} ${units[idx]}`;
 }
 
-// Navegação de Abas
-const navItems = document.querySelectorAll(".nav-item");
+// ---------------------------------------------------------------------------
+// Estado compartilhado da interface
+// ---------------------------------------------------------------------------
+const DAY_MS = 86400000;
+
+const state = {
+  deadlines: [],
+  deadlinesError: null,
+  outbox: [],
+  outboxError: null,
+  session: { is_authenticated: false, base_url: null },
+  // id da atividade -> atividade + dados da disciplina (montado a partir de get_course_details)
+  activities: new Map(),
+  deadlineView: "pending",
+  selectedOutboxId: null,
+  nextDue: null,
+};
+
+const pad2 = (n) => String(n).padStart(2, "0");
+const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+function daysFromToday(iso) {
+  return Math.round((startOfDay(new Date(iso)) - startOfDay(new Date())) / DAY_MS);
+}
+
+function weekdayShort(date) {
+  return date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+}
+
+// "seg, 30/11 às 23:59"
+function formatDueLong(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso || "");
+  return `${weekdayShort(d)}, ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)} às ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function formatCountdown(iso) {
+  const ms = new Date(iso).getTime() - Date.now();
+  if (isNaN(ms)) return { big: "—", small: "" };
+  if (ms <= 0) return { big: "Encerrado", small: "prazo vencido" };
+  const days = Math.floor(ms / DAY_MS);
+  const hours = Math.floor((ms % DAY_MS) / 3600000);
+  const mins = Math.floor((ms % 3600000) / 60000);
+  if (days > 0) return { big: `${days}d ${pad2(hours)}h`, small: "restantes" };
+  if (hours > 0) return { big: `${hours}h ${pad2(mins)}m`, small: "restantes" };
+  return { big: `${Math.max(mins, 1)} min`, small: "restantes" };
+}
+
+function relativeTime(iso) {
+  if (!iso) return "";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (isNaN(ms)) return "";
+  const mins = Math.round(ms / 60000);
+  if (mins < 1) return "agora há pouco";
+  if (mins < 60) return `há ${mins} min`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `há ${hours} h`;
+  const days = Math.round(hours / 24);
+  return `há ${days} ${days === 1 ? "dia" : "dias"}`;
+}
+
+function dateEyebrow() {
+  const txt = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+  return txt.charAt(0).toUpperCase() + txt.slice(1);
+}
+
+function hostOf(url) {
+  try {
+    return new URL(url).host;
+  } catch (_) {
+    return url || "";
+  }
+}
+
+function lastSyncIso() {
+  let best = null;
+  for (const c of cachedCourses) {
+    if (c.last_synced_at && (!best || new Date(c.last_synced_at) > new Date(best))) best = c.last_synced_at;
+  }
+  return best;
+}
+
+const ICON_CLOCK = `<svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`;
+const ICON_CHECK = (n = 12) => `<svg viewBox="0 0 24 24" width="${n}" height="${n}" stroke="currentColor" fill="none" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>`;
+const ICON_EXTERNAL = `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
+
+// ---------------------------------------------------------------------------
+// Navegação de abas
+// ---------------------------------------------------------------------------
+const navItems = document.querySelectorAll(".nav-item[data-tab]");
 const tabPanes = document.querySelectorAll(".tab-pane");
 const tabTitle = document.getElementById("tab-title");
+const tabEyebrow = document.getElementById("tab-eyebrow");
+
+let currentTab = "dashboard";
+
+const TAB_TITLES = {
+  dashboard: "Visão geral",
+  courses: "Disciplinas",
+  outbox: "Fila de envio",
+  settings: "Conexão e dados",
+};
+
+function tabEyebrowText(tab) {
+  if (tab === "dashboard") return dateEyebrow();
+  if (tab === "courses") {
+    const n = cachedCourses.length;
+    return `Base local · ${n} ${n === 1 ? "disciplina" : "disciplinas"}`;
+  }
+  if (tab === "outbox") return "Envios protegidos";
+  if (tab === "settings") return "Acesso institucional e dados locais";
+  return "0spof / workspace";
+}
+
+function updateHeading() {
+  tabTitle.innerText = TAB_TITLES[currentTab] || "0spof";
+  if (tabEyebrow) tabEyebrow.innerText = tabEyebrowText(currentTab);
+}
 
 function switchTab(target) {
+  // "queue-modal" é o antigo nome da aba de nova submissão: agora o formulário
+  // vive na fila de envio (painel lateral) e é aberto por "Nova entrega".
+  const focusForm = target === "queue-modal";
+  if (focusForm) target = "outbox";
+
+  currentTab = target;
   navItems.forEach((b) => b.classList.toggle("active", b.getAttribute("data-tab") === target));
   tabPanes.forEach((p) => p.classList.toggle("active", p.id === `tab-${target}`));
+  updateHeading();
 
-  const titles = {
-    dashboard: "Painel de Resiliência",
-    courses: "Disciplinas e Prazos Salvos",
-    outbox: "Fila de Submissões Pendentes",
-    "queue-modal": "Nova Submissão Offline",
-    settings: "Conexão Institucional Moodle / SUAP",
-  };
-  tabTitle.innerText = titles[target] || "0spof";
+  if (focusForm) {
+    const card = document.getElementById("new-delivery-card");
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+    const first = document.getElementById("assign-course");
+    if (first && !first.disabled) first.focus({ preventScroll: true });
+    else document.getElementById("assign-id")?.focus({ preventScroll: true });
+  }
 }
 
 navItems.forEach((btn) => {
   btn.addEventListener("click", () => switchTab(btn.getAttribute("data-tab")));
 });
 
+document.getElementById("btn-new-delivery")?.addEventListener("click", () => switchTab("queue-modal"));
+document.getElementById("link-outbox-all")?.addEventListener("click", () => switchTab("outbox"));
+
+// ---------------------------------------------------------------------------
+// Carga de dados
+// ---------------------------------------------------------------------------
 async function refreshData() {
   try {
     const status = await invoke("get_system_status");
@@ -94,99 +220,436 @@ async function refreshData() {
     document.getElementById("metric-deadlines").innerText = status.deadlines_count;
     document.getElementById("metric-outbox").innerText = status.outbox_count;
     document.getElementById("outbox-count").innerText = status.outbox_count;
+    const navCourses = document.getElementById("nav-courses-count");
+    if (navCourses) navCourses.innerText = status.courses_count > 0 ? status.courses_count : "";
 
     const sessionInfo = await invoke("get_session_info");
+    state.session = sessionInfo;
     const dot = document.getElementById("session-dot");
     const txt = document.getElementById("session-text");
+    const activeCard = document.getElementById("session-active-card");
+    const activeUrl = document.getElementById("session-connected-url");
 
     if (sessionInfo.is_authenticated) {
       dot.className = "dot online";
-      txt.innerText = "Conectado ao Moodle";
+      txt.innerText = "Sessão ativa";
       const urlInput = document.getElementById("moodle-url");
       if (urlInput && !urlInput.value && sessionInfo.base_url) {
         urlInput.value = sessionInfo.base_url;
       }
+      if (activeCard) activeCard.style.display = "flex";
+      if (activeUrl) activeUrl.innerText = `${hostOf(sessionInfo.base_url)} · sessão válida`;
     } else {
       dot.className = "dot offline";
-      txt.innerText = "Sessão Desconectada";
+      txt.innerText = "Sessão desconectada";
+      if (activeCard) activeCard.style.display = "none";
     }
 
-    await loadDeadlines();
     await loadCourses();
+    await loadActivityIndex();
+    await loadDeadlines();
     await loadOutbox();
+    renderCourses();
+    renderDashboard();
+    renderOutbox();
+    renderSessionDetail();
+    populateCourseSelect();
+    updateHeading();
   } catch (err) {
     console.error("Erro ao carregar status:", err);
   }
 }
 
+function renderSessionDetail() {
+  const el = document.getElementById("session-detail");
+  if (!el) return;
+  const host = state.session.is_authenticated ? hostOf(state.session.base_url) : "";
+  const last = lastSyncIso();
+  const parts = [];
+  if (host) parts.push(escapeHtml(host));
+  parts.push(last ? `Sincronizado ${escapeHtml(relativeTime(last))}` : "Ainda não sincronizado");
+  el.innerHTML = parts.join("<br>");
+}
+
+// Índice id da atividade -> atividade com o contexto da disciplina.
+async function loadActivityIndex() {
+  const idx = new Map();
+  await Promise.all(
+    cachedCourses.map(async (c) => {
+      try {
+        const sections = await invoke("get_course_details", { courseId: c.id });
+        for (const sec of sections || []) {
+          for (const act of sec.activities || []) {
+            idx.set(act.id, {
+              ...act,
+              section_name: sec.name,
+              course_id: c.id,
+              course_short: c.shortname,
+              course_name: c.fullname,
+              course_muted: c.is_muted,
+            });
+          }
+        }
+      } catch (_) {}
+    })
+  );
+  state.activities = idx;
+}
+
 async function loadDeadlines() {
+  try {
+    state.deadlines = (await invoke("get_upcoming_deadlines")) || [];
+    state.deadlinesError = null;
+  } catch (err) {
+    state.deadlines = [];
+    state.deadlinesError = err;
+  }
+}
+
+// Item mais relevante da fila para uma tarefa (prefere o que ainda não foi entregue).
+function outboxItemForAssign(assignId) {
+  const items = state.outbox.filter((i) => i.assign_id === assignId);
+  if (items.length === 0) return null;
+  return items.find((i) => i.status !== "delivered") || items[items.length - 1];
+}
+
+// ---------------------------------------------------------------------------
+// Visão geral
+// ---------------------------------------------------------------------------
+function deadlineRowFrom(d) {
+  const ctx = state.activities.get(d.id);
+  return {
+    id: d.id,
+    title: d.title,
+    type: d.activity_type,
+    due_date: d.due_date,
+    url: d.url,
+    is_submitted: !!d.is_submitted,
+    short: ctx ? ctx.course_short : "",
+    course: ctx ? ctx.course_name : "",
+  };
+}
+
+function sentRows() {
+  return [...state.activities.values()]
+    .filter((a) => a.activity_type === "assign" && a.is_submitted && !a.course_muted)
+    .map((a) => ({
+      id: a.id,
+      title: a.title,
+      type: a.activity_type,
+      due_date: a.due_date,
+      url: a.url,
+      is_submitted: true,
+      short: a.course_short,
+      course: a.course_name,
+    }))
+    .sort((a, b) => (new Date(b.due_date || 0) - new Date(a.due_date || 0)));
+}
+
+const DEADLINE_GROUPS = [
+  { key: "overdue", label: "Atrasados" },
+  { key: "today", label: "Hoje" },
+  { key: "week", label: "Esta semana" },
+  { key: "later", label: "Próximas semanas" },
+  { key: "nodate", label: "Sem prazo cadastrado" },
+  { key: "sent", label: "Enviados" },
+];
+
+function groupKeyFor(row) {
+  if (row.is_submitted) return "sent";
+  if (!row.due_date) return "nodate";
+  if (new Date(row.due_date).getTime() < Date.now()) return "overdue";
+  const days = daysFromToday(row.due_date);
+  if (days <= 0) return "today";
+  if (days <= 7) return "week";
+  return "later";
+}
+
+function rowChip(row) {
+  const item = outboxItemForAssign(row.id);
+  if (item) {
+    if (item.status === "delivered") return `<span class="chip ok">Enviado</span>`;
+    if (item.status === "failed") return `<span class="chip risk">Falha no envio</span>`;
+    if (item.status === "in_flight") return `<span class="chip warn">Enviando…</span>`;
+    return `<span class="chip info">Na fila</span>`;
+  }
+  if (row.is_submitted) return `<span class="chip ok">Entregue</span>`;
+  if (row.type !== "assign") return `<span class="chip mut" title="Atividade respondida apenas no Moodle">Online</span>`;
+  const g = groupKeyFor(row);
+  if (g === "overdue") return `<span class="chip risk">Atrasada</span>`;
+  if (g === "today" || g === "week") return `<span class="chip warn">Sem arquivo</span>`;
+  return `<span class="chip mut">Sem arquivo</span>`;
+}
+
+function renderDeadlineRow(row) {
+  const d = row.due_date ? new Date(row.due_date) : null;
+  const tile = d
+    ? `<small>${escapeHtml(weekdayShort(d).toUpperCase())}</small><b>${pad2(d.getDate())}</b>`
+    : `<small>SEM</small><b>—</b>`;
+  const sub = [row.short, row.course].filter(Boolean).join(" · ") || `Atividade #${row.id}`;
+  const queued = !!outboxItemForAssign(row.id);
+  const canQueue = row.type === "assign" && !row.is_submitted && !queued;
+  const actions = [
+    canQueue
+      ? `<button class="btn btn-primary btn-sm btn-queue-assign" data-assign-id="${row.id}" title="Preparar entrega da tarefa #${row.id}">Enfileirar</button>`
+      : "",
+    row.url
+      ? `<button class="btn-discreet btn-open-url" data-target="${escapeHtml(row.url)}" title="Abrir no Moodle institucional" aria-label="Abrir no Moodle">${ICON_EXTERNAL}</button>`
+      : "",
+  ].join("");
+  return `
+    <div class="deadline-row">
+      <div class="date-tile">${tile}</div>
+      <div class="row-main">
+        <div class="row-title">${escapeHtml(row.title)}</div>
+        <div class="row-sub">${escapeHtml(sub)}</div>
+      </div>
+      ${rowChip(row)}
+      <div class="row-actions">${actions}</div>
+    </div>`;
+}
+
+function renderDeadlines() {
   const container = document.getElementById("dashboard-deadlines-list");
   if (!container) return;
-  try {
-    const deadlines = await invoke("get_upcoming_deadlines");
-    if (!deadlines || deadlines.length === 0) {
-      container.innerHTML = `<p style="color:var(--muted);font-size:13px;padding:8px 0;">Nenhum prazo pendente no momento. Você está em dia!</p>`;
-      return;
-    }
-    container.innerHTML = deadlines
-      .map(
-        (d) => `
-        <div class="list-item">
-          <div class="item-content">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-              <span class="status-badge pending-assignment">
-                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                Pendente de envio
-              </span>
-              <strong>${d.title}</strong>
-              <small style="color:var(--muted);">(ID #${d.id})</small>
-            </div>
-            ${
-              d.due_date
-                ? `<span class="due-date-tag"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Entrega até: ${formatDate(d.due_date)}</span>`
-                : `<span style="font-size:12px;color:var(--muted);">Sem prazo limite cadastrado</span>`
-            }
-          </div>
-          <div class="item-actions">
-            <button class="btn btn-primary btn-queue-assign" data-assign-id="${d.id}" style="height:32px;padding:0 12px;font-size:12px;">
-              <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              Enfileirar entrega (#${d.id})
-            </button>
-            ${
-              d.url
-                ? `<button class="btn-discreet btn-open-url" data-target="${d.url}" title="Abrir tarefa no Moodle institucional">
-                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                    Abrir no Moodle
-                  </button>`
-                : ""
-            }
-          </div>
-        </div>
-      `
-      )
-      .join("");
-
-    container.querySelectorAll(".btn-queue-assign").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const assignId = btn.getAttribute("data-assign-id");
-        document.getElementById("assign-id").value = assignId;
-        switchTab("queue-modal");
-      });
-    });
-
-    container.querySelectorAll(".btn-open-url").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const target = btn.getAttribute("data-target");
-        try {
-          await invoke("open_target", { target });
-        } catch (err) {
-          alert("Erro ao abrir: " + err);
-        }
-      });
-    });
-  } catch (err) {
-    container.innerHTML = `<p class="error">Erro ao carregar prazos: ${err}</p>`;
+  if (state.deadlinesError) {
+    container.innerHTML = `<p class="error">Erro ao carregar prazos: ${escapeHtml(state.deadlinesError)}</p>`;
+    return;
   }
+  const pending = state.deadlines.map(deadlineRowFrom);
+  const sent = sentRows();
+  let rows;
+  if (state.deadlineView === "sent") rows = sent;
+  else if (state.deadlineView === "all") rows = pending.concat(sent);
+  else rows = pending;
+
+  if (rows.length === 0) {
+    container.innerHTML = `<p class="muted-line">${
+      state.deadlineView === "sent"
+        ? "Nenhuma entrega enviada ainda."
+        : "Nenhum prazo pendente no momento. Você está em dia!"
+    }</p>`;
+    return;
+  }
+
+  container.innerHTML = DEADLINE_GROUPS.map((g) => {
+    const inGroup = rows.filter((r) => groupKeyFor(r) === g.key);
+    if (inGroup.length === 0) return "";
+    return `<div class="deadline-group"><p class="grp">${g.label}</p>${inGroup.map(renderDeadlineRow).join("")}</div>`;
+  }).join("");
+
+  container.querySelectorAll(".btn-queue-assign").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      setAssignTarget(btn.getAttribute("data-assign-id"));
+      switchTab("queue-modal");
+    });
+  });
+
+  container.querySelectorAll(".btn-open-url").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const target = btn.getAttribute("data-target");
+      try {
+        await invoke("open_target", { target });
+      } catch (err) {
+        alert("Erro ao abrir: " + err);
+      }
+    });
+  });
+}
+
+document.querySelectorAll("[data-deadline-view]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    state.deadlineView = btn.getAttribute("data-deadline-view");
+    document
+      .querySelectorAll("[data-deadline-view]")
+      .forEach((b) => b.classList.toggle("active", b === btn));
+    renderDeadlines();
+  });
+});
+
+function pickNextDelivery() {
+  const now = Date.now();
+  const future = state.deadlines.filter((d) => d.due_date && new Date(d.due_date).getTime() >= now);
+  return future.find((d) => d.activity_type === "assign") || future[0] || null;
+}
+
+function renderNextDelivery() {
+  const card = document.getElementById("next-delivery-card");
+  if (!card) return;
+  const next = pickNextDelivery();
+  state.nextDue = next ? next.due_date : null;
+
+  if (!next) {
+    card.className = "next-card is-empty";
+    card.innerHTML = `
+      <div class="next-main">
+        <p class="eyebrow">Próxima entrega</p>
+        <h2>Nenhuma entrega à vista</h2>
+        <p class="next-due">Quando houver prazos nas disciplinas sincronizadas, a mais próxima aparece aqui com contagem regressiva.</p>
+      </div>`;
+    return;
+  }
+
+  const ctx = state.activities.get(next.id);
+  const item = outboxItemForAssign(next.id);
+  const chips = [];
+  if (item) {
+    chips.push(`${escapeHtml(item.filename)} anexado`);
+    if (item.has_rfc3161_token) chips.push("Selo RFC 3161 pronto");
+  } else if (next.activity_type === "assign") {
+    chips.push("Nenhum arquivo preparado");
+  } else {
+    chips.push("Respondida apenas no Moodle");
+  }
+  const dueLine = `Vence ${escapeHtml(formatDueLong(next.due_date))}${ctx ? ` · ${escapeHtml(ctx.course_name)}` : ""}`;
+  let actions = "";
+  if (item) {
+    actions += `<button class="btn btn-on-dark" type="button" id="btn-next-queue">Ver na fila</button>`;
+  } else if (next.activity_type === "assign") {
+    actions += `<button class="btn btn-on-dark btn-queue-assign" type="button" data-assign-id="${next.id}">Preparar entrega</button>`;
+  }
+  if (next.url) {
+    actions += `<button class="btn btn-ghost-dark btn-open-url" type="button" data-target="${escapeHtml(next.url)}">Abrir no Moodle</button>`;
+  }
+  const cd = formatCountdown(next.due_date);
+
+  card.className = "next-card";
+  card.innerHTML = `
+    <div class="next-main">
+      <p class="eyebrow">Próxima entrega${ctx ? ` · ${escapeHtml(ctx.course_short)}` : ""}</p>
+      <h2>${escapeHtml(next.title)}</h2>
+      <p class="next-due">${dueLine}</p>
+      <div class="next-chips">${chips.map((c) => `<span class="chip on-dark">${c}</span>`).join("")}</div>
+      <div class="next-actions">${actions}</div>
+    </div>
+    <div class="next-count">
+      <div class="count-big" id="next-countdown">${cd.big}</div>
+      <div class="count-small" id="next-countdown-label">${cd.small}</div>
+    </div>`;
+
+  card.querySelector("#btn-next-queue")?.addEventListener("click", () => switchTab("outbox"));
+  card.querySelector(".btn-queue-assign")?.addEventListener("click", (e) => {
+    setAssignTarget(e.currentTarget.getAttribute("data-assign-id"));
+    switchTab("queue-modal");
+  });
+  card.querySelector(".btn-open-url")?.addEventListener("click", async (e) => {
+    try {
+      await invoke("open_target", { target: e.currentTarget.getAttribute("data-target") });
+    } catch (err) {
+      alert("Erro ao abrir: " + err);
+    }
+  });
+}
+
+function tickCountdown() {
+  if (!state.nextDue) return;
+  const big = document.getElementById("next-countdown");
+  const small = document.getElementById("next-countdown-label");
+  if (!big) return;
+  const cd = formatCountdown(state.nextDue);
+  big.innerText = cd.big;
+  if (small) small.innerText = cd.small;
+}
+setInterval(tickCountdown, 30000);
+
+function renderProtect() {
+  const card = document.getElementById("protect-card");
+  const title = document.getElementById("protect-title");
+  const sub = document.getElementById("protect-sub");
+  const failed = state.outbox.filter((i) => i.status === "failed").length;
+  let tone = "ok";
+  if (cachedCourses.length === 0) {
+    tone = "empty";
+    title.innerText = "Nada salvo ainda";
+    sub.innerText = "Sincronize o Moodle para ter acesso offline.";
+  } else if (failed > 0) {
+    tone = "warn";
+    title.innerText = "Atenção na fila de envio";
+    sub.innerText = `${failed} ${failed === 1 ? "envio falhou" : "envios falharam"}. Revise na fila.`;
+  } else {
+    title.innerText = "Tudo protegido";
+    sub.innerText = "Você pode ficar offline agora.";
+  }
+  card.setAttribute("data-tone", tone);
+
+  const sess = document.getElementById("protect-session");
+  sess.innerText = state.session.is_authenticated ? "Ativa" : "Desconectada";
+  sess.className = state.session.is_authenticated ? "tone-ok" : "tone-warn";
+  const last = lastSyncIso();
+  document.getElementById("protect-lastsync").innerText = last ? relativeTime(last) : "Nunca";
+  const line = document.getElementById("last-sync-line");
+  if (line) line.innerText = last ? `Última sincronização ${relativeTime(last)} · ${formatDate(last)}` : "Ainda não sincronizado.";
+}
+
+// Etapas da linha do tempo, derivadas apenas dos campos que o backend expõe.
+function outboxSteps(item) {
+  const delivered = item.status === "delivered";
+  const failed = item.status === "failed";
+  const inFlight = item.status === "in_flight";
+  const tries = item.retry_count || 0;
+  return [
+    { state: "done", title: "Arquivo registrado", sub: "Hash SHA-256 calculado e guardado localmente" },
+    item.has_rfc3161_token
+      ? { state: "done", title: "Selo RFC 3161 emitido", sub: "Prova de existência do arquivo anexada" }
+      : { state: "todo", title: "Sem selo de tempo", sub: "Não solicitado ou autoridade indisponível" },
+    delivered
+      ? { state: "done", title: "Enviado ao Moodle", sub: "Entrega concluída" }
+      : failed
+        ? { state: "fail", title: "Falha no envio", sub: `${tries} ${tries === 1 ? "tentativa" : "tentativas"} · será repetido` }
+        : inFlight
+          ? { state: "active", title: "Enviando ao Moodle", sub: "Transferência em andamento" }
+          : { state: "active", title: "Enviando ao Moodle", sub: "Aguardando conexão" },
+    delivered
+      ? { state: "done", title: "Confirmado", sub: "Confirmado pelo Moodle" }
+      : { state: "todo", title: "Confirmado", sub: "" },
+  ];
+}
+
+function outboxStatusText(item) {
+  if (item.status === "delivered") return "Confirmado pelo Moodle";
+  if (item.status === "failed") {
+    const n = item.retry_count || 0;
+    return `Falha no envio · ${n} ${n === 1 ? "tentativa" : "tentativas"}`;
+  }
+  if (item.status === "in_flight") return "Enviando ao Moodle…";
+  return "Aguardando conexão com o Moodle";
+}
+
+function outboxChip(item) {
+  if (item.status === "delivered") return `<span class="chip ok">Confirmado pelo Moodle</span>`;
+  if (item.status === "failed") return `<span class="chip risk">Falhou</span>`;
+  if (item.status === "in_flight") return `<span class="chip warn">Enviando…</span>`;
+  return `<span class="chip info">${item.has_rfc3161_token ? "Selo pronto · aguardando rede" : "Aguardando rede"}</span>`;
+}
+
+function renderMiniOutbox() {
+  const box = document.getElementById("dashboard-outbox-list");
+  if (!box) return;
+  if (state.outbox.length === 0) {
+    box.innerHTML = `<p class="muted-line">Nenhum envio na fila.</p>`;
+    return;
+  }
+  box.innerHTML = state.outbox
+    .slice(0, 3)
+    .map((item) => {
+      const bars = outboxSteps(item)
+        .map((s) => `<span class="bar-seg ${s.state}"></span>`)
+        .join("");
+      return `
+        <div class="mini-item">
+          <div class="mini-name">${escapeHtml(item.filename)}</div>
+          <div class="mini-sub">${escapeHtml(outboxStatusText(item))}</div>
+          <div class="mini-bars">${bars}</div>
+        </div>`;
+    })
+    .join("");
+}
+
+function renderDashboard() {
+  renderNextDelivery();
+  renderProtect();
+  renderDeadlines();
+  renderMiniOutbox();
 }
 
 let cachedCourses = [];
@@ -232,13 +695,27 @@ const COURSE_FILTERS = {
   pending: (c) => (c.pending_deadlines || 0) > 0,
 };
 
-function describeNextDeadline(c) {
-  if (!c.next_deadline) return "";
-  const due = new Date(c.next_deadline);
-  const days = Math.round((new Date(due.toDateString()) - new Date(new Date().toDateString())) / 86400000);
-  const when = days <= 0 ? "hoje" : days === 1 ? "amanhã" : `em ${days} dias`;
-  const extra = c.pending_deadlines > 1 ? ` (+${c.pending_deadlines - 1})` : "";
-  return ` • <span class="next-deadline">próximo prazo ${when}${extra}</span>`;
+function courseDeadlineChip(c) {
+  if (c.is_muted) return `<span class="chip mut" title="Prazos desta disciplina estão ocultos na visão geral">Silenciada</span>`;
+  if (!c.next_deadline) return `<span class="chip mut">Sem prazos</span>`;
+  const days = daysFromToday(c.next_deadline);
+  if (days <= 0) return `<span class="chip warn">Vence hoje</span>`;
+  if (days === 1) return `<span class="chip warn">Amanhã</span>`;
+  if (days <= 3) return `<span class="chip warn">Vence em ${days} dias</span>`;
+  return `<span class="chip info">Em ${days} dias</span>`;
+}
+
+// Progresso de tarefas entregues, a partir do índice de atividades.
+function courseTaskProgress(courseId) {
+  let total = 0;
+  let done = 0;
+  for (const a of state.activities.values()) {
+    if (a.course_id === courseId && a.activity_type === "assign") {
+      total++;
+      if (a.is_submitted) done++;
+    }
+  }
+  return { total, done };
 }
 
 function syncCourseToolbar() {
@@ -255,7 +732,7 @@ function renderCourses() {
   const container = document.getElementById("courses-list");
   const countEl = document.getElementById("courses-count");
   if (!cachedCourses || cachedCourses.length === 0) {
-    container.innerHTML = "<p>Nenhum curso cacheado localmente ainda. Clique em 'Sincronizar Moodle'.</p>";
+    container.innerHTML = "<p class='empty-state'>Nenhum curso cacheado localmente ainda. Clique em 'Sincronizar Moodle'.</p>";
     if (countEl) countEl.innerText = "";
     return;
   }
@@ -267,53 +744,61 @@ function renderCourses() {
     .sort(COURSE_SORTS[courseView.sort] || COURSE_SORTS.name);
   if (countEl) {
     countEl.innerText = visible.length === cachedCourses.length
-      ? `${cachedCourses.length} disciplinas`
+      ? ""
       : `${visible.length} de ${cachedCourses.length} disciplinas`;
   }
   if (visible.length === 0) {
-    container.innerHTML = "<p>Nenhuma disciplina corresponde aos filtros.</p>";
+    container.innerHTML = "<p class='empty-state'>Nenhuma disciplina corresponde aos filtros.</p>";
     return;
   }
   container.innerHTML = visible
-    .map(
-      (c) => {
-        const muteBadge = c.is_muted
-          ? `<span class="badge-muted" title="Prazos desta disciplina estão ocultos no painel"><svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg> Silenciado</span>`
-          : "";
-        const muteBtn = c.is_muted
-          ? `<button class="btn btn-secondary btn-toggle-mute" data-course-id="${c.id}" data-muted="false" style="height:32px;padding:0 10px;font-size:12px;" title="Reativar acompanhamento de prazos">
-               <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-               Reativar prazos
-             </button>`
-          : `<button class="btn btn-ghost btn-toggle-mute" data-course-id="${c.id}" data-muted="true" style="height:32px;padding:0 10px;font-size:12px;color:var(--muted);" title="Silenciar prazos deste curso no painel">
-               <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-               Silenciar
-             </button>`;
+    .map((c) => {
+      const muteBtn = c.is_muted
+        ? `<button class="btn btn-secondary btn-toggle-mute" data-course-id="${c.id}" data-muted="false" title="Reativar acompanhamento de prazos">
+             <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+             Reativar prazos
+           </button>`
+        : `<button class="btn btn-ghost btn-toggle-mute" data-course-id="${c.id}" data-muted="true" title="Silenciar prazos deste curso na visão geral">
+             <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+             Silenciar
+           </button>`;
+      const prog = courseTaskProgress(c.id);
+      const pct = prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0;
+      const progressHtml =
+        prog.total > 0
+          ? `<div class="progress"><div class="bar"><i style="width:${pct}%"></i></div><p>${prog.done} de ${prog.total} ${prog.total === 1 ? "tarefa entregue" : "tarefas entregues"}</p></div>`
+          : `<div class="progress"><p>Nenhuma tarefa com entrega nesta disciplina</p></div>`;
+      const pending = c.pending_deadlines || 0;
 
-        return `
-          <div class="list-item course-row ${c.is_muted ? "course-muted-row" : ""}" data-course-id="${c.id}" style="cursor:pointer;">
-            <div class="item-content">
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
-                <strong>${c.fullname}</strong>
-                ${muteBadge}
-              </div>
-              <small>ID #${c.id} • ${c.sections_count || 0} seções • ${c.activities_count || 0} atividades${describeNextDeadline(c)}</small>
+      return `
+        <article class="course-card course-row ${c.is_muted ? "course-muted-row" : ""}" data-course-id="${c.id}" tabindex="0">
+          <div class="cc-head">
+            <div class="cc-title">
+              <p class="eyebrow">${escapeHtml(c.shortname)}</p>
+              <h3>${escapeHtml(c.fullname)}</h3>
             </div>
-            <div class="item-actions">
-              ${muteBtn}
-              <button class="btn btn-ghost btn-export-course" data-course-id="${c.id}" style="height:32px;padding:0 10px;font-size:12px;" title="Selecionar materiais e exportar pacote (.zip)">
-                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-                Exportar
-              </button>
-              <button class="btn btn-secondary btn-open-course" data-course-id="${c.id}" style="height:32px;padding:0 12px;font-size:12px;">
-                Abrir disciplina
-                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-              </button>
-            </div>
+            ${courseDeadlineChip(c)}
           </div>
-        `;
-      }
-    )
+          <div class="stat-row">
+            <span><b>${c.sections_count || 0}</b>seções</span>
+            <span><b>${c.activities_count || 0}</b>atividades</span>
+            <span><b>${pending}</b>${pending === 1 ? "prazo" : "prazos"}</span>
+          </div>
+          ${progressHtml}
+          <div class="item-actions cc-actions">
+            ${muteBtn}
+            <button class="btn btn-ghost btn-export-course" data-course-id="${c.id}" title="Selecionar materiais e exportar pacote (.zip)">
+              <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+              Exportar
+            </button>
+            <button class="btn btn-secondary btn-open-course" data-course-id="${c.id}">
+              Abrir
+              <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </button>
+          </div>
+        </article>
+      `;
+    })
     .join("");
 
   container.querySelectorAll(".btn-toggle-mute").forEach((btn) => {
@@ -339,9 +824,16 @@ function renderCourses() {
   });
 
   container.querySelectorAll(".course-row").forEach((row) => {
-    row.addEventListener("click", () => {
+    const open = () => {
       const courseId = parseInt(row.getAttribute("data-course-id"), 10);
       openCourseDetail(courseId);
+    };
+    row.addEventListener("click", open);
+    row.addEventListener("keydown", (e) => {
+      if (e.target === row && (e.key === "Enter" || e.key === " ")) {
+        e.preventDefault();
+        open();
+      }
     });
   });
 }
@@ -393,11 +885,30 @@ function getActivityBadge(actType) {
   return icons[actType] || `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg> <span>${actType}</span>`;
 }
 
+// Ícone/rótulo do tipo de recurso na lista de atividades da disciplina.
+function activityKind(act, hasLocalFile, isVideo) {
+  const mime = act.content_mime || "";
+  const path = (act.local_file_path || act.url || "").toLowerCase();
+  if (mime === "application/pdf" || /\.pdf(\?|$)/.test(path)) return { label: "PDF", cls: "k-pdf" };
+  if (isVideo) return { label: "VÍD", cls: "k-vid" };
+  if (mime.startsWith("image/") || /\.(png|jpe?g|gif|svg|webp)(\?|$)/.test(path)) return { label: "IMG", cls: "k-img" };
+  const byType = {
+    assign: { label: "TAR", cls: "k-task" },
+    page: { label: "HTML", cls: "k-html" },
+    resource: { label: "ARQ", cls: "k-other" },
+    folder: { label: "PST", cls: "k-other" },
+    url: { label: "LNK", cls: "k-html" },
+    forum: { label: "FÓR", cls: "k-other" },
+    quiz: { label: "QST", cls: "k-task" },
+  };
+  return byType[act.activity_type] || { label: "•", cls: "k-other" };
+}
+
 async function openCourseDetail(courseId) {
   const course = cachedCourses.find((c) => c.id === courseId);
   document.getElementById("courses-master-view").style.display = "none";
   document.getElementById("course-detail-view").style.display = "block";
-  document.getElementById("course-detail-short").innerText = course ? `CURSO #${course.id} • ${course.shortname}` : `CURSO #${courseId}`;
+  document.getElementById("course-detail-short").innerText = course ? course.shortname : `#${courseId}`;
   document.getElementById("course-detail-title").innerText = course ? course.fullname : "Disciplina";
 
   const btnDetailExport = document.getElementById("btn-detail-export-course");
@@ -407,14 +918,13 @@ async function openCourseDetail(courseId) {
 
   const btnDetailMute = document.getElementById("btn-detail-toggle-mute");
   if (btnDetailMute && course) {
+    btnDetailMute.className = "btn btn-secondary";
     if (course.is_muted) {
       btnDetailMute.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> <span>Reativar prazos</span>`;
-      btnDetailMute.className = "btn btn-secondary";
-      btnDetailMute.title = "Reativar prazos desta disciplina no painel";
+      btnDetailMute.title = "Reativar prazos desta disciplina na visão geral";
     } else {
-      btnDetailMute.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg> <span>Silenciar prazos</span>`;
-      btnDetailMute.className = "btn btn-ghost";
-      btnDetailMute.title = "Silenciar prazos desta disciplina no painel";
+      btnDetailMute.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg> <span>Silenciar</span>`;
+      btnDetailMute.title = "Silenciar prazos desta disciplina na visão geral";
     }
     btnDetailMute.onclick = async () => {
       try {
@@ -429,24 +939,29 @@ async function openCourseDetail(courseId) {
   }
 
   const tocNav = document.getElementById("course-toc-nav");
+  const tocFoot = document.getElementById("course-toc-foot");
   const sectionsContainer = document.getElementById("course-sections-list");
 
-  tocNav.innerHTML = "<p style='font-size:12px;color:var(--muted);'>Carregando sumário…</p>";
-  sectionsContainer.innerHTML = "<p style='font-size:13px;color:var(--muted);'>Carregando seções…</p>";
+  tocNav.innerHTML = "<p class='muted-line'>Carregando sumário…</p>";
+  if (tocFoot) tocFoot.innerText = "";
+  sectionsContainer.innerHTML = "<p class='muted-line'>Carregando seções…</p>";
 
   try {
     const sections = await invoke("get_course_details", { courseId });
     if (!sections || sections.length === 0) {
-      tocNav.innerHTML = "<p style='font-size:12px;color:var(--muted);'>Nenhuma seção.</p>";
-      sectionsContainer.innerHTML = "<p>Nenhuma seção cadastrada nesta disciplina.</p>";
+      tocNav.innerHTML = "<p class='muted-line'>Nenhuma seção.</p>";
+      sectionsContainer.innerHTML = "<p class='muted-line'>Nenhuma seção cadastrada nesta disciplina.</p>";
       return;
     }
+
+    const totalActivities = sections.reduce((n, s) => n + (s.activities ? s.activities.length : 0), 0);
+    if (tocFoot) tocFoot.innerText = `${sections.length} seções · ${totalActivities} atividades`;
 
     tocNav.innerHTML = sections
       .map(
         (sec, idx) => `
-        <a class="toc-link" data-target-sec="sec-${sec.id}" title="${sec.name}">
-          ${idx + 1}. ${sec.name}
+        <a class="toc-link" data-target-sec="sec-${sec.id}" title="${escapeHtml(sec.name)}">
+          <span class="toc-num">${pad2(idx)}</span><span class="toc-name">${escapeHtml(sec.name)}</span>
         </a>
       `
       )
@@ -465,117 +980,153 @@ async function openCourseDetail(courseId) {
       });
     });
 
-    sectionsContainer.innerHTML = sections
-      .map((sec) => {
-        const summaryHtml = sec.summary ? `<div class="section-summary">${sec.summary}</div>` : "";
-        const activitiesHtml =
-          !sec.activities || sec.activities.length === 0
-            ? `<p style="color:#8994aa;font-size:12px;">Nenhuma atividade nesta seção.</p>`
-            : sec.activities
-                .map((act) => {
-                  const descHtml = act.description
-                    ? `<div class="activity-description">${act.description}</div>`
-                    : "";
-                  const hasLocalFile = act.local_file_path && act.local_file_path.length > 0;
-                  const isVideo = (act.content_mime && act.content_mime.startsWith("video/")) || (act.url && /\.(mp4|webm|mkv)(\?|$)/i.test(act.url));
-
-                  let actionsHtml = "";
-                  if (act.activity_type === "assign") {
-                    actionsHtml += `
-                      <button class="btn btn-primary btn-queue-assign" data-assign-id="${act.id}" style="height:32px;padding:0 10px;font-size:12px;">
-                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                        Enfileirar entrega (#${act.id})
-                      </button>
-                    `;
-                  }
-
-                  if (hasLocalFile) {
-                    actionsHtml += `
-                      <button class="btn btn-secondary btn-open-local" data-target="${act.local_file_path}" style="height:32px;padding:0 10px;font-size:12px;">
-                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                        Abrir cópia offline
-                      </button>
-                    `;
-                  } else if (isVideo) {
-                    actionsHtml += `
-                      <button class="btn btn-secondary btn-download-media" data-act-id="${act.id}" data-video="true" style="height:32px;padding:0 10px;font-size:12px;">
-                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                        Baixar vídeo offline
-                      </button>
-                    `;
-                  } else if (act.activity_type === "resource" || act.activity_type === "page") {
-                    actionsHtml += `
-                      <button class="btn btn-secondary btn-download-media" data-act-id="${act.id}" data-video="false" style="height:32px;padding:0 10px;font-size:12px;">
-                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Baixar recurso
-                      </button>
-                    `;
-                  }
-
-                  if (act.url) {
-                    if (act.activity_type === "url") {
-                      actionsHtml += `
-                        <button class="btn btn-primary btn-open-url" data-target="${act.url}" style="height:32px;padding:0 10px;font-size:12px;">
-                          <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                          Acessar link externo
-                        </button>
-                      `;
-                    } else {
-                      actionsHtml += `
-                        <button class="btn-discreet btn-open-url" data-target="${act.url}" title="Abrir página desta atividade no Moodle institucional">
-                          <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                          Abrir no Moodle
-                        </button>
-                      `;
-                    }
-                  }
-
-                  let badgeHtml = "";
-                  if (act.activity_type === "assign") {
-                    if (act.is_submitted) {
-                      badgeHtml = `<span class="status-badge submitted"><svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Entregue</span>`;
-                    } else {
-                      badgeHtml = `<span class="status-badge pending-assignment"><svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Pendente</span>`;
-                    }
-                  } else {
-                    badgeHtml = `<span class="status-badge pending">${getActivityBadge(act.activity_type)}</span>`;
-                  }
-
-                  const dueDateHtml =
-                    act.activity_type === "assign" && act.due_date
-                      ? `<span class="due-date-tag"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Prazo: ${formatDate(act.due_date)}</span>`
-                      : "";
-
-                  return `
-                    <div class="list-item activity-card">
-                      <div class="item-content">
-                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-                          ${badgeHtml}
-                          <strong>${act.title}</strong> <small style="color:var(--muted);">(ID #${act.id})</small>
-                          ${dueDateHtml}
-                        </div>
-                        ${descHtml}
-                      </div>
-                      ${actionsHtml ? `<div class="item-actions">${actionsHtml}</div>` : ""}
-                    </div>
-                  `;
-                })
-                .join("");
-
-        return `
-          <div id="sec-${sec.id}" style="border:1px solid #e8ebf2;border-radius:12px;padding:16px 18px;background:#fff;scroll-margin-top:20px;">
-            <h3 style="font-size:16px;color:#18223a;margin-bottom:6px;">${sec.name}</h3>
-            ${summaryHtml}
-            <div class="section-activities">${activitiesHtml}</div>
+    // Próxima tarefa pendente da disciplina (faixa de destaque no topo).
+    const upcoming = sections
+      .flatMap((s) => s.activities || [])
+      .filter((a) => a.activity_type === "assign" && !a.is_submitted && a.due_date)
+      .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))[0];
+    let bannerHtml = "";
+    if (upcoming) {
+      const qItem = outboxItemForAssign(upcoming.id);
+      bannerHtml = `
+        <section class="card task-banner">
+          <span class="task-banner-icon">${ICON_CLOCK}</span>
+          <div class="task-banner-main">
+            <p class="eyebrow">Tarefa · vence ${escapeHtml(formatDueLong(upcoming.due_date))}</p>
+            <h2>${escapeHtml(upcoming.title)}</h2>
           </div>
-        `;
-      })
-      .join("");
+          ${qItem ? `<span class="chip info">Na fila</span>` : ""}
+          <button class="btn btn-primary btn-queue-assign" data-assign-id="${upcoming.id}" type="button">${qItem ? "Nova versão" : "Preparar entrega"}</button>
+        </section>`;
+    }
+
+    sectionsContainer.innerHTML =
+      bannerHtml +
+      sections
+        .map((sec, secIdx) => {
+          const summaryHtml = sec.summary ? `<div class="section-summary">${sec.summary}</div>` : "";
+          const activitiesHtml =
+            !sec.activities || sec.activities.length === 0
+              ? `<p class="muted-line">Nenhuma atividade nesta seção.</p>`
+              : sec.activities
+                  .map((act) => {
+                    const descHtml = act.description
+                      ? `<div class="activity-description">${act.description}</div>`
+                      : "";
+                    const hasLocalFile = act.local_file_path && act.local_file_path.length > 0;
+                    const isVideo =
+                      (act.content_mime && act.content_mime.startsWith("video/")) ||
+                      (act.url && /\.(mp4|webm|mkv)(\?|$)/i.test(act.url));
+
+                    let actionsHtml = "";
+                    if (act.activity_type === "assign") {
+                      actionsHtml += `
+                        <button class="btn btn-primary btn-queue-assign" data-assign-id="${act.id}">
+                          <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                          Enfileirar entrega (#${act.id})
+                        </button>
+                      `;
+                    }
+
+                    if (hasLocalFile) {
+                      actionsHtml += `
+                        <button class="btn btn-secondary btn-open-local" data-target="${escapeHtml(act.local_file_path)}">
+                          <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                          Abrir cópia offline
+                        </button>
+                      `;
+                    } else if (isVideo) {
+                      actionsHtml += `
+                        <button class="btn btn-secondary btn-download-media" data-act-id="${act.id}" data-video="true">
+                          <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                          Baixar vídeo offline
+                        </button>
+                      `;
+                    } else if (act.activity_type === "resource" || act.activity_type === "page") {
+                      actionsHtml += `
+                        <button class="btn btn-secondary btn-download-media" data-act-id="${act.id}" data-video="false">
+                          <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                          Baixar recurso
+                        </button>
+                      `;
+                    }
+
+                    if (act.url) {
+                      if (act.activity_type === "url") {
+                        actionsHtml += `
+                          <button class="btn btn-primary btn-open-url" data-target="${escapeHtml(act.url)}">
+                            <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                            Acessar link externo
+                          </button>
+                        `;
+                      } else {
+                        actionsHtml += `
+                          <button class="btn-discreet btn-open-url" data-target="${escapeHtml(act.url)}" title="Abrir página desta atividade no Moodle institucional">
+                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                            Abrir no Moodle
+                          </button>
+                        `;
+                      }
+                    }
+
+                    let badgeHtml = "";
+                    if (act.activity_type === "assign") {
+                      const qItem = outboxItemForAssign(act.id);
+                      if (act.is_submitted) {
+                        badgeHtml = `<span class="chip ok">Entregue</span>`;
+                      } else if (qItem) {
+                        badgeHtml = `<span class="chip info">Na fila</span>`;
+                      } else {
+                        badgeHtml = `<span class="chip warn">Pendente</span>`;
+                      }
+                    } else if (hasLocalFile) {
+                      badgeHtml = `<span class="chip ok">Offline</span>`;
+                    } else {
+                      badgeHtml = `<span class="chip mut">${getActivityBadge(act.activity_type)}</span>`;
+                    }
+
+                    const dueDateHtml =
+                      act.activity_type === "assign" && act.due_date
+                        ? `<span class="due-date-tag"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Prazo: ${formatDate(act.due_date)}</span>`
+                        : "";
+
+                    const kind = activityKind(act, hasLocalFile, isVideo);
+
+                    return `
+                      <div class="list-item activity-card">
+                        <div class="file-ico ${kind.cls}">${kind.label}</div>
+                        <div class="item-content">
+                          <div class="activity-line">
+                            <strong>${escapeHtml(act.title)}</strong>
+                            <small>#${act.id}</small>
+                            ${dueDateHtml}
+                          </div>
+                          ${descHtml}
+                          ${actionsHtml ? `<div class="item-actions">${actionsHtml}</div>` : ""}
+                        </div>
+                        <div class="activity-state">${badgeHtml}</div>
+                      </div>
+                    `;
+                  })
+                  .join("");
+
+          const n = sec.activities ? sec.activities.length : 0;
+          return `
+            <section id="sec-${sec.id}" class="card section-card">
+              <div class="section-card-head">
+                <div class="section-card-title"><span class="sec-num">${pad2(secIdx)}</span><h3>${escapeHtml(sec.name)}</h3></div>
+                <span class="sec-count">${n} ${n === 1 ? "atividade" : "atividades"}</span>
+              </div>
+              ${summaryHtml}
+              <div class="section-activities">${activitiesHtml}</div>
+            </section>
+          `;
+        })
+        .join("");
 
     sectionsContainer.querySelectorAll(".btn-queue-assign").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const assignId = btn.getAttribute("data-assign-id");
-        document.getElementById("assign-id").value = assignId;
+        setAssignTarget(btn.getAttribute("data-assign-id"));
         switchTab("queue-modal");
       });
     });
@@ -614,7 +1165,7 @@ async function openCourseDetail(courseId) {
       });
     });
   } catch (err) {
-    sectionsContainer.innerHTML = `<p class="error">Erro ao carregar detalhes do curso: ${err}</p>`;
+    sectionsContainer.innerHTML = `<p class="error">Erro ao carregar detalhes do curso: ${escapeHtml(err)}</p>`;
   }
 }
 
@@ -624,45 +1175,240 @@ document.getElementById("btn-back-courses").addEventListener("click", () => {
 });
 
 async function loadOutbox() {
-  const container = document.getElementById("outbox-list");
   try {
-    const items = await invoke("get_outbox_items");
-    if (!items || items.length === 0) {
-      container.innerHTML = "<p>Nenhuma tarefa na fila de envio.</p>";
-      return;
-    }
-    container.innerHTML = items
-      .map(
-        (item) => `
-        <div class="list-item">
-          <div class="item-content">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-              <span class="status-badge ${item.status}">${item.status}</span>
-              <strong>Tarefa #${item.assign_id}: ${item.filename}</strong>
-            </div>
-            <small>Tentativas: ${item.retry_count} | Hash: ${item.file_hash.substring(0, 16)}...</small>
-          </div>
-          <div class="item-actions">
-            <button class="btn btn-secondary btn-proof" data-id="${item.id}" style="height:30px;padding:0 10px;font-size:12px;">
-              <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-              Ver Dossiê
-            </button>
-          </div>
-        </div>
-      `
-      )
-      .join("");
-
-    document.querySelectorAll(".btn-proof").forEach((btn) => {
-      btn.addEventListener("click", () => openProof(btn.getAttribute("data-id")));
-    });
+    state.outbox = (await invoke("get_outbox_items")) || [];
+    state.outboxError = null;
   } catch (err) {
-    container.innerHTML = `<p class="error">Erro ao listar fila: ${err}</p>`;
+    state.outbox = [];
+    state.outboxError = err;
   }
 }
 
+function fileKind(filename) {
+  const ext = (String(filename).split(".").pop() || "").toLowerCase();
+  if (ext === "pdf") return { label: "PDF", cls: "k-pdf" };
+  if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) return { label: "ZIP", cls: "k-zip" };
+  if (["doc", "docx", "odt"].includes(ext)) return { label: "DOC", cls: "k-doc" };
+  if (["png", "jpg", "jpeg", "gif", "svg", "webp"].includes(ext)) return { label: "IMG", cls: "k-img" };
+  return { label: (ext || "ARQ").slice(0, 3).toUpperCase(), cls: "k-other" };
+}
+
+function renderTimeline(steps) {
+  return steps
+    .map((s, i) => {
+      const last = i === steps.length - 1;
+      const dotInner = s.state === "done" ? ICON_CHECK(12) : s.state === "fail" ? "!" : "";
+      return `
+        <div class="step step-${s.state}">
+          <div class="step-rail">
+            <span class="step-dot">${dotInner}</span>
+            ${last ? "" : `<span class="step-line ${s.state === "done" ? "done" : ""}"></span>`}
+          </div>
+          <div class="step-body">
+            <div class="step-title">${escapeHtml(s.title)}</div>
+            ${s.sub ? `<div class="step-sub">${escapeHtml(s.sub)}</div>` : ""}
+          </div>
+        </div>`;
+    })
+    .join("");
+}
+
+function renderOutbox() {
+  const container = document.getElementById("outbox-list");
+  const detail = document.getElementById("outbox-detail");
+  const chip = document.getElementById("outbox-session-chip");
+  if (!container) return;
+
+  if (chip) {
+    if (state.session.is_authenticated) {
+      chip.className = "chip ok";
+      chip.innerText = "Sessão do Moodle ativa";
+    } else {
+      chip.className = "chip warn";
+      chip.innerText = "Sessão desconectada · conecte-se para enviar";
+    }
+  }
+
+  if (state.outboxError) {
+    container.innerHTML = `<p class="error">Erro ao listar fila: ${escapeHtml(state.outboxError)}</p>`;
+    if (detail) detail.style.display = "none";
+    return;
+  }
+  const items = state.outbox;
+  if (items.length === 0) {
+    container.innerHTML = "<p class='empty-state'>Nenhuma tarefa na fila de envio.</p>";
+    if (detail) detail.style.display = "none";
+    return;
+  }
+
+  if (!items.some((i) => i.id === state.selectedOutboxId)) state.selectedOutboxId = items[0].id;
+
+  container.innerHTML = items
+    .map((item) => {
+      const kind = fileKind(item.filename);
+      const ctx = state.activities.get(item.assign_id);
+      const context = ctx
+        ? `${ctx.course_short} · ${ctx.title}${ctx.due_date ? ` · vence ${formatDueLong(ctx.due_date)}` : ""}`
+        : `Tarefa #${item.assign_id}`;
+      const icon =
+        item.status === "delivered"
+          ? `<div class="file-ico k-ok">${ICON_CHECK(18)}</div>`
+          : `<div class="file-ico ${kind.cls}">${escapeHtml(kind.label)}</div>`;
+      return `
+        <button type="button" class="outbox-item list-item ${item.id === state.selectedOutboxId ? "selected" : ""}" data-id="${item.id}">
+          ${icon}
+          <div class="item-content">
+            <div class="row-title">${escapeHtml(item.filename)}</div>
+            <div class="row-sub">${escapeHtml(context)}${item.retry_count > 0 ? ` · ${item.retry_count} ${item.retry_count === 1 ? "tentativa" : "tentativas"}` : ""}</div>
+          </div>
+          ${outboxChip(item)}
+        </button>`;
+    })
+    .join("");
+
+  container.querySelectorAll(".outbox-item").forEach((el) => {
+    el.addEventListener("click", () => {
+      state.selectedOutboxId = parseInt(el.getAttribute("data-id"), 10);
+      renderOutbox();
+    });
+  });
+
+  const sel = items.find((i) => i.id === state.selectedOutboxId);
+  if (detail && sel) {
+    detail.style.display = "block";
+    detail.innerHTML = `
+      <div class="receipt-head">
+        <div>
+          <p class="eyebrow">Comprovante</p>
+          <h2>${escapeHtml(sel.filename)}</h2>
+        </div>
+        <button class="btn btn-secondary btn-proof" data-id="${sel.id}" type="button">Ver dossiê</button>
+      </div>
+      <div class="receipt-body">
+        <div class="timeline">${renderTimeline(outboxSteps(sel))}</div>
+        <div class="receipt-facts">
+          <div>
+            <div class="fact-label">Hash SHA-256</div>
+            <code class="hash-block">${escapeHtml(sel.file_hash)}</code>
+          </div>
+          <div>
+            <div class="fact-label">Selo de tempo</div>
+            <div class="fact-value">${sel.has_rfc3161_token ? "Carimbo RFC 3161 anexado ao arquivo" : "Nenhum carimbo anexado"}</div>
+          </div>
+          <div>
+            <div class="fact-label">Tarefa no Moodle</div>
+            <div class="fact-value">#${sel.assign_id}${state.activities.get(sel.assign_id) ? ` · ${escapeHtml(state.activities.get(sel.assign_id).title)}` : ""}</div>
+          </div>
+        </div>
+      </div>`;
+    detail.querySelectorAll(".btn-proof").forEach((btn) => {
+      btn.addEventListener("click", () => openProof(btn.getAttribute("data-id")));
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Formulário "Nova entrega": disciplina -> tarefa -> ID preenchido sozinho.
+// O campo de ID continua disponível para tarefas ainda não sincronizadas.
+// ---------------------------------------------------------------------------
 const formEnqueue = document.getElementById("form-enqueue");
 const resultBox = document.getElementById("enqueue-result");
+const assignCourseSel = document.getElementById("assign-course");
+const assignTaskSel = document.getElementById("assign-task");
+const assignIdInput = document.getElementById("assign-id");
+const assignIdHint = document.getElementById("assign-id-hint");
+const ASSIGN_HINT_DEFAULT = "Preenchido automaticamente ao escolher a tarefa; ou digite o ID.";
+
+function assignTasksOf(courseId) {
+  return [...state.activities.values()]
+    .filter((a) => a.course_id === courseId && a.activity_type === "assign")
+    .sort((a, b) => {
+      if (a.is_submitted !== b.is_submitted) return a.is_submitted ? 1 : -1;
+      const ta = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+      const tb = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+      return ta - tb;
+    });
+}
+
+function populateCourseSelect() {
+  if (!assignCourseSel) return;
+  const prev = assignCourseSel.value;
+  const withTasks = cachedCourses
+    .filter((c) => assignTasksOf(c.id).length > 0)
+    .sort((a, b) => a.fullname.localeCompare(b.fullname, "pt-BR"));
+  assignCourseSel.innerHTML =
+    `<option value="">${withTasks.length ? "Selecione a disciplina…" : "Nenhuma tarefa sincronizada"}</option>` +
+    withTasks.map((c) => `<option value="${c.id}">${escapeHtml(c.shortname)} · ${escapeHtml(c.fullname)}</option>`).join("");
+  assignCourseSel.disabled = withTasks.length === 0;
+  if (prev && withTasks.some((c) => String(c.id) === prev)) assignCourseSel.value = prev;
+  populateTaskSelect();
+}
+
+function populateTaskSelect() {
+  if (!assignTaskSel) return;
+  const courseId = parseInt(assignCourseSel.value, 10);
+  const prev = assignTaskSel.value;
+  if (!courseId) {
+    assignTaskSel.innerHTML = `<option value="">Escolha a disciplina primeiro</option>`;
+    assignTaskSel.disabled = true;
+    syncAssignIdField();
+    return;
+  }
+  const tasks = assignTasksOf(courseId);
+  assignTaskSel.innerHTML =
+    `<option value="">Selecione a tarefa…</option>` +
+    tasks
+      .map((t) => {
+        const tags = [t.is_submitted ? "entregue" : "", t.due_date ? `vence ${formatDueLong(t.due_date)}` : ""].filter(Boolean);
+        return `<option value="${t.id}">${escapeHtml(t.title)}${tags.length ? ` (${escapeHtml(tags.join(" · "))})` : ""}</option>`;
+      })
+      .join("");
+  assignTaskSel.disabled = false;
+  if (prev && tasks.some((t) => String(t.id) === prev)) assignTaskSel.value = prev;
+  syncAssignIdField();
+}
+
+// Quando há tarefa escolhida o ID vem dela (somente leitura); senão fica livre.
+function syncAssignIdField() {
+  if (!assignIdInput) return;
+  const taskId = parseInt(assignTaskSel.value, 10);
+  if (taskId) {
+    assignIdInput.value = String(taskId);
+    assignIdInput.readOnly = true;
+    if (assignIdHint) assignIdHint.innerText = `ID no Moodle: ${taskId} · preenchido automaticamente`;
+  } else {
+    if (assignIdInput.readOnly) assignIdInput.value = "";
+    assignIdInput.readOnly = false;
+    if (assignIdHint) assignIdHint.innerText = ASSIGN_HINT_DEFAULT;
+  }
+}
+
+function setAssignTarget(assignId) {
+  const id = parseInt(assignId, 10);
+  const act = state.activities.get(id);
+  populateCourseSelect();
+  if (act && act.activity_type === "assign") {
+    assignCourseSel.value = String(act.course_id);
+    populateTaskSelect();
+    assignTaskSel.value = String(act.id);
+    syncAssignIdField();
+  } else {
+    assignCourseSel.value = "";
+    populateTaskSelect();
+    assignIdInput.value = String(id);
+  }
+}
+
+function resetEnqueueForm() {
+  formEnqueue.reset();
+  document.getElementById("check-tsa").checked = true;
+  populateCourseSelect();
+  assignIdInput.readOnly = false;
+  if (assignIdHint) assignIdHint.innerText = ASSIGN_HINT_DEFAULT;
+}
+
+assignCourseSel?.addEventListener("change", populateTaskSelect);
+assignTaskSel?.addEventListener("change", syncAssignIdField);
 
 formEnqueue.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -678,8 +1424,8 @@ formEnqueue.addEventListener("submit", async (e) => {
     resultBox.className = "result-message success";
     resultBox.innerText = `Tarefa enfileirada com sucesso! ID: ${res.outbox_id} | SHA-256: ${res.file_hash}`;
     resultBox.style.display = "block";
-    formEnqueue.reset();
-    document.getElementById("check-tsa").checked = true;
+    resetEnqueueForm();
+    state.selectedOutboxId = res.outbox_id;
     await refreshData();
   } catch (err) {
     resultBox.className = "result-message error";
@@ -800,6 +1546,7 @@ window.addEventListener("focus", async () => {
 });
 
 document.getElementById("btn-refresh").addEventListener("click", refreshData);
+updateHeading();
 refreshData();
 
 // ScrollSpy para destacar dinamicamente a seção ativa no sumário
@@ -849,7 +1596,7 @@ if (mainScrollEl) {
 const btnLogout = document.getElementById("btn-logout");
 if (btnLogout) {
   btnLogout.addEventListener("click", async () => {
-    if (!confirm("Deseja realmente deslogar e apagar a sessÃ£o atual?")) return;
+    if (!confirm("Deseja realmente deslogar e apagar a sessão atual?")) return;
     try {
       await invoke("logout");
       const moodleCookie = document.getElementById("moodle-cookie");
@@ -860,7 +1607,7 @@ if (btnLogout) {
         sessionResult.style.display = "none";
       }
       await refreshData();
-      alert("SessÃ£o desconectada e cookie apagado com sucesso.");
+      alert("Sessão desconectada e cookie apagado com sucesso.");
     } catch (err) {
       alert("Erro ao deslogar: " + err);
     }
@@ -887,7 +1634,7 @@ if (btnExportData) {
       const resBox = document.getElementById("data-management-result");
       if (resBox) {
         resBox.className = "result-message success";
-        resBox.innerText = "ExportaÃ§Ã£o de dados em JSON concluÃ­da com sucesso!";
+        resBox.innerText = "Exportação de dados em JSON concluída com sucesso!";
         resBox.style.display = "block";
       }
     } catch (err) {
@@ -1252,7 +1999,7 @@ const btnWipeData = document.getElementById("btn-wipe-data");
 if (btnWipeData) {
   btnWipeData.addEventListener("click", async () => {
     const confirmed = confirm(
-      "AtenÃ§Ã£o: todos os cursos, seÃ§Ãµes, atividades e itens na fila de envio serÃ£o apagados permanentemente do banco local.\n\nDeseja realmente apagar todos os dados?"
+      "Atenção: todos os cursos, seções, atividades e itens na fila de envio serão apagados permanentemente do banco local.\n\nDeseja realmente apagar todos os dados?"
     );
     if (!confirmed) return;
 
